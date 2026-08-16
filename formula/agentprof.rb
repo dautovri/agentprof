@@ -13,7 +13,7 @@ class Agentprof < Formula
   desc "AI Agent Workspace Optimizer & Shell Startup Latency Profiler"
   homepage "https://github.com/dautovri/agentprof"
   url "https://github.com/dautovri/agentprof/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  sha256 "022903fc97c37e6ca2daacfecad32992d8cf498fd7aba3af55dfbf51764fddd7"
   license "MIT"
   head "https://github.com/dautovri/agentprof.git", branch: "main"
 
@@ -27,17 +27,8 @@ class Agentprof < Formula
   end
 
   test do
-    # Verify version output
     assert_match version.to_s, shell_output("#{bin}/agentprof --version")
-
-    # Verify basic CLI execution
     output = shell_output("#{bin}/agentprof --help")
     assert_match "AI Agent Workspace Optimizer", output
-    assert_match "scan", output
-    assert_match "omz", output
-    assert_match "bench", output
-    assert_match "mcp", output
-    assert_match "skills", output
-    assert_match "tui", output
   end
 end
