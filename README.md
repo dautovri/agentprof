@@ -52,9 +52,9 @@ brew tap dautovri/tap
 brew install agentprof
 ```
 
-### Via Cargo
+### Via Cargo (Direct from GitHub)
 ```bash
-cargo install agentprof
+cargo install --git https://github.com/dautovri/agentprof.git
 ```
 
 ### Build from Source

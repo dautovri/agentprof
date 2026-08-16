@@ -6,7 +6,8 @@ agentprof is a high-performance Rust CLI & TUI tool designed to eliminate subshe
 
 ## Installation
 - Homebrew: `brew tap dautovri/tap && brew install agentprof`
-- Cargo: `cargo install agentprof`
+- Cargo: `cargo install --git https://github.com/dautovri/agentprof.git`
+- 1-Line: `curl -fsSL https://raw.githubusercontent.com/dautovri/agentprof/main/install.sh | bash`
 - Repository: https://github.com/dautovri/agentprof
 - Live Documentation: https://dautovri.github.io/agentprof/
 
