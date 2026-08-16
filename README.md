@@ -3,9 +3,12 @@
 > **The AI Agent Workspace Optimizer & Shell Latency Profiler**  
 > *A high-performance Rust CLI & TUI that eliminates subshell startup latency, profiles Oh My Zsh plugins, audits AI context bloat (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`), inspects MCP tool schemas, resolves skill collisions, and accelerates AI coding agents.*
 
+[![Website](https://img.shields.io/badge/Website-dautovri.github.io%2Fagentprof-blue?logo=safari)](https://dautovri.github.io/agentprof/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Built in Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Version](https://img.shields.io/badge/Version-0.2.0-green.svg)](Cargo.toml)
+
+🌐 **Website & Interactive Demo:** [https://dautovri.github.io/agentprof/](https://dautovri.github.io/agentprof/)
 
 ---
 
