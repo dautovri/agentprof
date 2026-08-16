@@ -29,6 +29,9 @@ class Agentprof < Formula
   test do
     assert_match version.to_s, shell_output("#{bin}/agentprof --version")
     output = shell_output("#{bin}/agentprof --help")
-    assert_match "AI Agent Workspace Optimizer", output
+    assert_match "Full-suite optimizer for AI coding agents", output
+    assert_match "scan", output
+    assert_match "mcp", output
+    assert_match "skills", output
   end
 end
