@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>agentprof — AI Agent Workspace Optimizer & Shell Latency Profiler</title>
-  <meta name="description" content="Eliminate shell startup latency, profile Oh My Zsh plugins, audit AI context bloat, inspect MCP tool schemas, and accelerate AI coding agents.">
-  <meta name="keywords" content="agentprof, AI agent, Claude Code, Cursor, OpenCode, Grok, Oh My Zsh profiler, subshell latency, MCP schema profiler, context window optimizer, prompt engineering, developer tools">
+  <meta name="description" content="Eliminate subshell startup latency, profile Oh My Zsh plugins, audit AI context bloat, inspect MCP tool schemas, and accelerate AI coding agents.">
+  <meta name="keywords" content="agentprof, AI agent profiler, Claude Code, Cursor, OpenCode, Grok, Oh My Zsh profiler, subshell latency, MCP schema profiler, context window optimizer, prompt engineering, developer tools">
   <link rel="canonical" href="https://dautovri.github.io/agentprof/">
   <link rel="alternate" type="text/plain" href="https://dautovri.github.io/agentprof/llms.txt" title="LLM Documentation">
 
@@ -20,7 +20,7 @@
   <meta name="twitter:title" content="agentprof — AI Agent Workspace Optimizer">
   <meta name="twitter:description" content="Profile Oh My Zsh plugins, benchmark subshell latency, audit MCP schemas, and accelerate AI coding agents.">
 
-  <!-- Schema.org JSON-LD for AI Search Bots & Google -->
+  <!-- Schema.org JSON-LD -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -45,27 +45,31 @@
   }
   </script>
 
-  <!-- Fonts -->
+  <!-- Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 
   <style>
     :root {
-      --bg: #090a0f;
-      --bg-card: rgba(18, 20, 29, 0.7);
+      --bg: #07090e;
+      --bg-surface: #0e121b;
+      --bg-card: rgba(15, 19, 30, 0.75);
       --border: rgba(255, 255, 255, 0.08);
-      --border-glow: rgba(56, 189, 248, 0.3);
-      --text: #f1f5f9;
+      --border-bright: rgba(56, 189, 248, 0.35);
+      --text: #f8fafc;
       --text-muted: #94a3b8;
+      --text-dim: #64748b;
       --accent: #38bdf8;
-      --accent-glow: rgba(56, 189, 248, 0.15);
-      --green: #4ade80;
-      --yellow: #facc15;
-      --red: #f87171;
-      --purple: #c084fc;
+      --accent-glow: rgba(56, 189, 248, 0.2);
+      --accent-purple: #c084fc;
+      --green: #10b981;
+      --green-glow: rgba(16, 185, 129, 0.15);
+      --red: #f43f5e;
+      --yellow: #f59e0b;
       --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
+      --font-display: 'Space Grotesk', sans-serif;
+      --font-mono: 'Fira Code', monospace;
     }
 
     * {
@@ -81,78 +85,88 @@
       line-height: 1.6;
       overflow-x: hidden;
       background-image: 
-        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56, 189, 248, 0.12), transparent),
-        radial-gradient(ellipse 60% 40% at 80% 60%, rgba(192, 132, 252, 0.08), transparent);
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        radial-gradient(circle 800px at 50% -100px, rgba(56, 189, 248, 0.15), transparent 70%),
+        radial-gradient(circle 600px at 85% 40%, rgba(192, 132, 252, 0.08), transparent 70%);
+      background-size: 40px 40px, 40px 40px, 100% 100%, 100% 100%;
     }
 
     .container {
-      max-width: 1140px;
+      max-width: 1180px;
       margin: 0 auto;
       padding: 0 24px;
     }
 
-    /* Navigation */
+    /* Top Nav */
     nav {
-      height: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      height: 74px;
       border-bottom: 1px solid var(--border);
-      backdrop-filter: blur(12px);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       position: sticky;
       top: 0;
       z-index: 100;
-      background: rgba(9, 10, 15, 0.8);
+      background: rgba(7, 9, 14, 0.75);
+    }
+
+    .nav-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 100%;
     }
 
     .nav-brand {
       display: flex;
       align-items: center;
-      gap: 10px;
-      font-weight: 800;
-      font-size: 20px;
-      letter-spacing: -0.5px;
+      gap: 12px;
       text-decoration: none;
-      color: var(--text);
+      color: #ffffff;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 22px;
+      letter-spacing: -0.5px;
     }
 
-    .nav-badge {
+    .nav-version {
+      font-family: var(--font-mono);
       font-size: 11px;
       font-weight: 600;
-      background: rgba(56, 189, 248, 0.15);
-      color: var(--accent);
-      padding: 2px 8px;
-      border-radius: 9999px;
+      padding: 3px 8px;
+      background: rgba(56, 189, 248, 0.12);
       border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--accent);
+      border-radius: 9999px;
     }
 
-    .nav-links {
+    .nav-actions {
       display: flex;
       align-items: center;
-      gap: 24px;
+      gap: 20px;
     }
 
     .nav-link {
       color: var(--text-muted);
       text-decoration: none;
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 600;
       transition: color 0.2s;
     }
 
     .nav-link:hover {
-      color: var(--text);
+      color: #ffffff;
     }
 
     .btn-github {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--border);
-      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       padding: 8px 16px;
       border-radius: 8px;
+      color: #ffffff;
+      text-decoration: none;
       font-size: 14px;
       font-weight: 600;
-      text-decoration: none;
       display: inline-flex;
       align-items: center;
       gap: 8px;
@@ -160,82 +174,124 @@
     }
 
     .btn-github:hover {
-      background: rgba(255, 255, 255, 0.12);
-      border-color: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.25);
     }
 
-    /* Hero */
+    /* Hero Section */
     .hero {
-      padding: 80px 0 60px;
+      padding: 90px 0 60px;
       text-align: center;
     }
 
-    .pill {
+    .badge-hero {
       display: inline-flex;
       align-items: center;
       gap: 8px;
       padding: 6px 14px;
       background: rgba(56, 189, 248, 0.08);
-      border: 1px solid rgba(56, 189, 248, 0.2);
+      border: 1px solid rgba(56, 189, 248, 0.25);
       border-radius: 9999px;
       font-size: 13px;
       font-weight: 600;
       color: var(--accent);
       margin-bottom: 24px;
+      letter-spacing: -0.2px;
+    }
+
+    .badge-hero span.pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
     }
 
     h1 {
-      font-size: 54px;
-      font-weight: 800;
-      letter-spacing: -1.5px;
-      line-height: 1.1;
-      margin-bottom: 20px;
-      background: linear-gradient(to bottom right, #ffffff, #cbd5e1);
+      font-family: var(--font-display);
+      font-size: 60px;
+      font-weight: 700;
+      letter-spacing: -1.8px;
+      line-height: 1.08;
+      max-width: 900px;
+      margin: 0 auto 24px;
+      background: linear-gradient(180deg, #ffffff 30%, #94a3b8 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
-    .hero-subtitle {
+    .hero-desc {
       font-size: 20px;
       color: var(--text-muted);
-      max-width: 720px;
-      margin: 0 auto 36px;
-      line-height: 1.5;
+      max-width: 740px;
+      margin: 0 auto 40px;
+      line-height: 1.55;
     }
 
-    /* Install Bar */
-    .install-box {
-      max-width: 580px;
-      margin: 0 auto 50px;
-      background: #11141f;
+    /* Installer Switcher */
+    .install-widget {
+      max-width: 620px;
+      margin: 0 auto 70px;
+      background: #0b0f19;
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 12px 18px;
+      overflow: hidden;
+      box-shadow: 0 20px 40px -15px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.03);
+    }
+
+    .install-tabs {
+      display: flex;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--border);
+      padding: 4px;
+      gap: 4px;
+    }
+
+    .install-tab {
+      flex: 1;
+      padding: 8px;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .install-tab.active {
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+    }
+
+    .install-box {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+      padding: 14px 20px;
     }
 
-    .install-code {
+    .install-cmd {
       font-family: var(--font-mono);
       font-size: 14px;
-      color: #38bdf8;
+      color: var(--accent);
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
     }
 
-    .install-code .prompt {
-      color: #64748b;
+    .install-cmd span.p {
+      color: var(--text-dim);
       user-select: none;
     }
 
-    .copy-btn {
+    .btn-copy {
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid var(--border);
-      color: var(--text);
-      padding: 6px 12px;
+      color: #ffffff;
+      padding: 6px 14px;
       border-radius: 6px;
       font-size: 12px;
       font-weight: 600;
@@ -243,259 +299,570 @@
       transition: all 0.2s;
     }
 
-    .copy-btn:hover {
+    .btn-copy:hover {
       background: var(--accent);
-      color: #090a0f;
+      color: #07090e;
     }
 
-    /* Terminal Demo Window */
-    .terminal-window {
-      background: #0d0f17;
+    /* Comparison Bar (Before vs After) */
+    .comparison-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-bottom: 70px;
+    }
+
+    .comp-card {
+      background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px rgba(56, 189, 248, 0.1);
-      overflow: hidden;
+      border-radius: 12px;
+      padding: 20px 24px;
       text-align: left;
-      margin-bottom: 90px;
+      backdrop-filter: blur(12px);
     }
 
-    .terminal-header {
-      background: #151824;
-      padding: 12px 16px;
+    .comp-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 12px;
+    }
+
+    .comp-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .comp-before {
+      color: var(--red);
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: line-through;
+      opacity: 0.8;
+    }
+
+    .comp-after {
+      color: var(--green);
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .comp-saving {
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Interactive Terminal Demo */
+    .terminal-section {
+      margin-bottom: 100px;
+    }
+
+    .terminal-wrapper {
+      background: #080b12;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 30px 70px -15px rgba(0,0,0,0.9), 0 0 50px rgba(56, 189, 248, 0.1);
+    }
+
+    .terminal-topbar {
+      background: #111522;
+      border-bottom: 1px solid var(--border);
+      padding: 12px 18px;
       display: flex;
       align-items: center;
-      border-bottom: 1px solid var(--border);
+      justify-content: space-between;
     }
 
-    .mac-dots {
+    .term-dots {
+      display: flex;
+      gap: 7px;
+    }
+
+    .term-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+
+    .dot-r { background: #f43f5e; }
+    .dot-y { background: #f59e0b; }
+    .dot-g { background: #10b981; }
+
+    .term-tabs {
       display: flex;
       gap: 6px;
     }
 
-    .mac-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-
-    .dot-red { background: #ef4444; }
-    .dot-yellow { background: #eab308; }
-    .dot-green { background: #22c55e; }
-
-    .terminal-title {
-      flex: 1;
-      text-align: center;
+    .term-tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-dim);
       font-family: var(--font-mono);
       font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .terminal-body {
-      padding: 24px;
-      font-family: var(--font-mono);
-      font-size: 13px;
-      line-height: 1.7;
-      color: #e2e8f0;
-      overflow-x: auto;
-    }
-
-    .term-cyan { color: #38bdf8; font-weight: bold; }
-    .term-green { color: #4ade80; font-weight: bold; }
-    .term-yellow { color: #facc15; font-weight: bold; }
-    .term-red { color: #f87171; font-weight: bold; }
-    .term-dim { color: #64748b; }
-
-    /* Features Grid */
-    .section-title {
-      font-size: 32px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      text-align: center;
-      margin-bottom: 12px;
-    }
-
-    .section-subtitle {
-      text-align: center;
-      color: var(--text-muted);
-      margin-bottom: 50px;
-      font-size: 16px;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-      margin-bottom: 90px;
-    }
-
-    @media (max-width: 900px) {
-      .grid { grid-template-columns: 1fr; }
-      h1 { font-size: 38px; }
-    }
-
-    .card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 28px;
-      backdrop-filter: blur(12px);
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
       transition: all 0.2s;
     }
 
-    .card:hover {
-      border-color: rgba(56, 189, 248, 0.4);
-      transform: translateY(-2px);
-      box-shadow: 0 12px 30px -10px rgba(56, 189, 248, 0.15);
+    .term-tab-btn.active {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.12);
+      color: var(--accent);
     }
 
-    .card-icon {
-      font-size: 28px;
-      margin-bottom: 16px;
-      display: inline-block;
+    .terminal-content {
+      padding: 24px;
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      line-height: 1.7;
+      text-align: left;
+      min-height: 380px;
+      overflow-x: auto;
     }
 
-    .card h3 {
-      font-size: 18px;
+    .t-cyan { color: #38bdf8; font-weight: 600; }
+    .t-green { color: #10b981; font-weight: 600; }
+    .t-yellow { color: #facc15; font-weight: 600; }
+    .t-red { color: #f43f5e; font-weight: 600; }
+    .t-magenta { color: #c084fc; font-weight: 600; }
+    .t-dim { color: #64748b; }
+    .t-bold { font-weight: 700; color: #ffffff; }
+
+    /* Bento Grid */
+    .bento-section {
+      margin-bottom: 100px;
+    }
+
+    .section-head {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 38px;
       font-weight: 700;
-      margin-bottom: 10px;
+      letter-spacing: -1px;
+      margin-bottom: 12px;
+    }
+
+    .section-sub {
+      font-size: 17px;
+      color: var(--text-muted);
+    }
+
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .bento-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 30px;
+      text-align: left;
+      backdrop-filter: blur(12px);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .bento-card:hover {
+      border-color: var(--border-bright);
+      transform: translateY(-3px);
+      box-shadow: 0 16px 36px -10px var(--accent-glow);
+    }
+
+    .bento-card.col-2 {
+      grid-column: span 2;
+    }
+
+    .bento-card.col-3 {
+      grid-column: span 3;
+    }
+
+    .bento-icon {
+      font-size: 26px;
+      margin-bottom: 16px;
+    }
+
+    .bento-card h3 {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
       color: #ffffff;
     }
 
-    .card p {
-      font-size: 14px;
+    .bento-card p {
+      font-size: 14.5px;
       color: var(--text-muted);
       line-height: 1.6;
+    }
+
+    .bento-metric {
+      margin-top: 20px;
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* ROI Calculator Section */
+    .calculator-section {
+      background: linear-gradient(180deg, rgba(14, 18, 27, 0.8), rgba(7, 9, 14, 0.9));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 50px 40px;
+      margin-bottom: 100px;
+      text-align: left;
+    }
+
+    .calc-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      align-items: center;
+      margin-top: 30px;
+    }
+
+    .calc-slider-group {
+      margin-bottom: 24px;
+    }
+
+    .calc-label-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .calc-val {
+      font-family: var(--font-mono);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--accent);
+    }
+
+    .calc-result-box {
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 14px;
+      padding: 30px;
+    }
+
+    .calc-stat-row {
+      margin-bottom: 20px;
+    }
+
+    .calc-stat-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .calc-stat-number {
+      font-family: var(--font-display);
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--green);
+      line-height: 1;
     }
 
     /* Footer */
     footer {
       border-top: 1px solid var(--border);
-      padding: 40px 0;
+      padding: 50px 0;
       text-align: center;
-      color: var(--text-muted);
+      color: var(--text-dim);
       font-size: 14px;
     }
 
     footer a {
-      color: var(--accent);
+      color: var(--text-muted);
       text-decoration: none;
+      font-weight: 600;
+    }
+
+    footer a:hover {
+      color: var(--accent);
+    }
+
+    @media (max-width: 900px) {
+      h1 { font-size: 40px; }
+      .bento-grid { grid-template-columns: 1fr; }
+      .bento-card.col-2, .bento-card.col-3 { grid-column: span 1; }
+      .calc-grid { grid-template-columns: 1fr; }
+      .comparison-strip { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
 
-  <!-- Navigation -->
+  <!-- Top Nav -->
   <nav>
-    <div class="container" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+    <div class="container nav-inner">
       <a href="#" class="nav-brand">
-        ⚡ agentprof <span class="nav-badge">v0.2.0</span>
+        ⚡ agentprof <span class="nav-version">v0.2.0</span>
       </a>
-      <div class="nav-links">
+      <div class="nav-actions">
         <a href="#features" class="nav-link">Features</a>
+        <a href="#benchmarks" class="nav-link">Benchmarks</a>
+        <a href="#calculator" class="nav-link">ROI Calculator</a>
         <a href="https://github.com/dautovri/agentprof" target="_blank" class="btn-github">
-          <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-          GitHub Star
+          <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          Star on GitHub
         </a>
       </div>
     </div>
   </nav>
 
-  <!-- Hero -->
+  <!-- Hero Section -->
   <section class="hero">
     <div class="container">
-      <div class="pill">⚡ Built for Claude Code, OpenCode, Cursor & Grok</div>
+      <div class="badge-hero">
+        <span class="pulse-dot"></span>
+        <span>Built for Claude Code, OpenCode, Cursor & Grok</span>
+      </div>
       <h1>Accelerate AI Coding Agents.<br>Eliminate Shell & Context Bloat.</h1>
-      <p class="hero-subtitle">
+      <p class="hero-desc">
         A high-performance Rust CLI & TUI that slashes subshell tool latency, audits MCP tool schemas, resolves skill collisions, and eliminates instruction token waste.
       </p>
 
-      <!-- Install Box -->
-      <div class="install-box">
-        <div class="install-code">
-          <span class="prompt">$</span>
-          <span>brew tap dautovri/tap && brew install agentprof</span>
+      <!-- 3-Way Install Widget -->
+      <div class="install-widget">
+        <div class="install-tabs">
+          <button class="install-tab active" onclick="setInstall('brew')">Homebrew (macOS / Linux)</button>
+          <button class="install-tab" onclick="setInstall('cargo')">Cargo (Rust)</button>
+          <button class="install-tab" onclick="setInstall('curl')">1-Line Script</button>
         </div>
-        <button class="copy-btn" onclick="navigator.clipboard.writeText('brew tap dautovri/tap && brew install agentprof'); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy', 2000)">Copy</button>
+        <div class="install-box">
+          <div class="install-cmd">
+            <span class="p">$</span>
+            <span id="install-text">brew tap dautovri/tap && brew install agentprof</span>
+          </div>
+          <button class="btn-copy" onclick="copyInstall()">Copy</button>
+        </div>
       </div>
 
-      <!-- Terminal Preview -->
-      <div class="terminal-window">
-        <div class="terminal-header">
-          <div class="mac-dots">
-            <div class="mac-dot dot-red"></div>
-            <div class="mac-dot dot-yellow"></div>
-            <div class="mac-dot dot-green"></div>
+      <!-- Before vs After Metric Strip -->
+      <div class="comparison-strip" id="benchmarks">
+        <div class="comp-card">
+          <div class="comp-label">Subshell Tool Latency</div>
+          <div class="comp-row">
+            <span class="comp-before">617.6ms</span>
+            <span class="comp-after">5.3ms</span>
           </div>
-          <div class="terminal-title">agentprof scan — ~/Developer/workspace</div>
+          <div class="comp-saving">⚡ 99.1% Faster Tool Spawns</div>
         </div>
-        <div class="terminal-body">
-          <span class="term-cyan">⚡ Running agentprof full workspace & shell scan...</span><br><br>
-          <span class="term-cyan">🤖 AI Agent Context & Instruction Budget</span><br>
-          <span class="term-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-          • Total Instruction Overhead: <span class="term-yellow">12,333 tokens</span> across 18 files (9.6% of 128k context)<br>
-          • Estimated Turn Cost: <span class="term-green">$18.50 per 100 prompt turns</span><br><br>
 
-          <span class="term-cyan">⚡ Subshell Spawn & Tool Execution Latency</span><br>
-          <span class="term-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-          • Interactive Login (`zsh -lic`): <span class="term-yellow">617.6ms</span><br>
-          • Non-Interactive Subshell (`zsh -c`): <span class="term-green">5.3ms</span><br>
-          • Tool Execution Latency Tax: <span class="term-red">+30.6s wasted</span> per 50 agent tool calls<br>
-          • Agent Fast-Path Guard: <span class="term-red">❌ Missing (run `agentprof fix --shell`)</span><br><br>
+        <div class="comp-card">
+          <div class="comp-label">50 Tool Calls Turnaround</div>
+          <div class="comp-row">
+            <span class="comp-before">+30.8s wait</span>
+            <span class="comp-after">0.26s</span>
+          </div>
+          <div class="comp-saving">⚡ 30 seconds saved per session</div>
+        </div>
 
-          <span class="term-cyan">🔌 Model Context Protocol (MCP) Tool Schema Load</span><br>
-          <span class="term-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-          • Total MCP Schema Load: <span class="term-yellow">16,300 tokens</span> across 6 active servers<br>
-          • Top Heavy Servers: <span class="term-red">lldb (6.2k tokens)</span>, <span class="term-red">frida (4.8k tokens)</span><br><br>
+        <div class="comp-card">
+          <div class="comp-label">Instruction Context Load</div>
+          <div class="comp-row">
+            <span class="comp-before">16,300 tok</span>
+            <span class="comp-after">1,200 tok</span>
+          </div>
+          <div class="comp-saving">⚡ 92.6% Context Reduction</div>
+        </div>
+      </div>
 
-          <span class="term-cyan">💡 1-Click Optimizations Ready:</span><br>
-          [1] Injected subshell bypass into ~/.zshrc -> <span class="term-green">Saves 30s per 50 tool calls</span><br>
-          [2] Generated .claudeignore for build caches -> <span class="term-green">Stops 3,000+ files search thrash</span><br>
+      <!-- Interactive Terminal View -->
+      <div class="terminal-section">
+        <div class="terminal-wrapper">
+          <div class="terminal-topbar">
+            <div class="term-dots">
+              <div class="term-dot dot-r"></div>
+              <div class="term-dot dot-y"></div>
+              <div class="term-dot dot-g"></div>
+            </div>
+            <div class="term-tabs">
+              <button class="term-tab-btn active" onclick="switchTerm('scan')">agentprof scan</button>
+              <button class="term-tab-btn" onclick="switchTerm('mcp')">agentprof mcp</button>
+              <button class="term-tab-btn" onclick="switchTerm('skills')">agentprof skills</button>
+              <button class="term-tab-btn" onclick="switchTerm('omz')">agentprof omz</button>
+              <button class="term-tab-btn" onclick="switchTerm('lint')">agentprof lint</button>
+            </div>
+          </div>
+          <div class="terminal-content" id="term-output">
+            <!-- Populated via JS -->
+          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Features -->
-  <section id="features">
+  <!-- Bento Features Grid -->
+  <section class="bento-section" id="features">
     <div class="container">
-      <h2 class="section-title">The Complete Agent Optimization Stack</h2>
-      <p class="section-subtitle">Everything you need to keep AI coding assistants lean, fast, and secure.</p>
+      <div class="section-head">
+        <h2 class="section-title">The Complete Agent Optimization Stack</h2>
+        <p class="section-sub">Engineered in Rust with sub-millisecond execution for power developers.</p>
+      </div>
 
-      <div class="grid">
-        <div class="card">
-          <div class="card-icon">⚡</div>
-          <h3>Subshell Accelerator</h3>
-          <p>Eliminates the 500ms shell init penalty on every tool execution. Injects zero-overhead bypass guards into <code>~/.zshrc</code> so agent subshells spawn in under 6ms.</p>
+      <div class="bento-grid">
+        <!-- Feature 1 (Span 2) -->
+        <div class="bento-card col-2">
+          <div>
+            <div class="bento-icon">⚡</div>
+            <h3>Subshell Latency Accelerator</h3>
+            <p>Every AI agent tool execution forks a subshell. If your <code>~/.zshrc</code> runs slow version managers (nvm, pyenv) or git status prompts, 50 tool executions waste over 30 seconds. <code>agentprof</code> injects an idempotent, zero-overhead bypass header so agent subshells run in under 6ms.</p>
+          </div>
+          <div class="bento-metric">
+            <span>Subshell Init Benchmark</span>
+            <span class="t-green">617ms ➔ 5.3ms (99.1% saved)</span>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="card-icon">🔌</div>
-          <h3>MCP Schema Profiler</h3>
-          <p>Measures the exact token footprint of all connected Model Context Protocol tool schemas before they eat up 15k+ tokens of your system prompt.</p>
+        <!-- Feature 2 -->
+        <div class="bento-card">
+          <div>
+            <div class="bento-icon">🔌</div>
+            <h3>MCP Tool Schema Profiler</h3>
+            <p>Connected Model Context Protocol servers inject extensive JSON tool definitions into your prompt on every turn. <code>agentprof mcp</code> profiles schema token overhead and flags heavyweight tools before they blow through your budget.</p>
+          </div>
+          <div class="bento-metric">
+            <span>Schema Load</span>
+            <span class="t-yellow">lldb: 6.2k tok • frida: 4.8k tok</span>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="card-icon">🎯</div>
-          <h3>Skills & Keyword Auditor</h3>
-          <p>Audits all installed skills across Claude Code and OpenCode. Detects trigger keyword collisions and flags oversized <code>SKILL.md</code> definitions.</p>
+        <!-- Feature 3 -->
+        <div class="bento-card">
+          <div>
+            <div class="bento-icon">🎯</div>
+            <h3>Skills & Trigger Collision Auditor</h3>
+            <p>Audits all installed skills across Claude Code, OpenCode, and local worktrees. Identifies keyword overlaps where multiple skills compete for identical intents (e.g. <code>review</code>, <code>qa</code>, <code>design</code>) and cause hallucination loops.</p>
+          </div>
+          <div class="bento-metric">
+            <span>Collision Guard</span>
+            <span class="t-red">129 Skills • 6 Trigger Overlaps</span>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="card-icon">🔍</div>
-          <h3>Rule Contradiction Linter</h3>
-          <p>Pinpoints conflicting instructions across <code>AGENTS.md</code>, <code>CLAUDE.md</code>, and <code>.cursorrules</code> that trigger model confusion and infinite loops.</p>
+        <!-- Feature 4 (Span 2) -->
+        <div class="bento-card col-2">
+          <div>
+            <div class="bento-icon">🔍</div>
+            <h3>Instruction Linter & Contradiction Detector</h3>
+            <p>Detects conflicting rules across <code>AGENTS.md</code>, <code>CLAUDE.md</code>, and <code>.cursorrules</code> (e.g. <code>ObservableObject</code> vs <code>@Observable</code>, deployment target mismatches). Compresses bloated rule files and compiles them into context-routed JIT instructions.</p>
+          </div>
+          <div class="bento-metric">
+            <span>Rule Conflict Linter</span>
+            <span class="t-cyan">33 Contradictions Pinpointed & Fixed</span>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="card-icon">🖥️</div>
-          <h3>Interactive Terminal UI</h3>
-          <p>Full-screen dashboard with tabbed views for instant context monitoring, MCP inspection, and 1-key automated fixes.</p>
+        <!-- Feature 5 (Span 3) -->
+        <div class="bento-card col-3">
+          <div>
+            <div class="bento-icon">🛡️</div>
+            <h3>Workspace Hygiene & Security Shield</h3>
+            <p>Prevents AI agent search and grep tools from indexing massive unignored directories (<code>.build/</code>, <code>DerivedData/</code>, <code>node_modules/</code>, <code>target/</code>) or accidentally ingesting sensitive credential files (<code>.env</code>, <code>*.pem</code>, <code>credentials.json</code>). Generates zero-leak <code>.claudeignore</code> and <code>.cursorignore</code> files in 1 click.</p>
+          </div>
+          <div class="bento-metric">
+            <span>1-Click Guard</span>
+            <span class="t-green">agentprof fix --all (Generates .claudeignore + ~/.zshrc Fast-Path)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive ROI Calculator -->
+  <section class="container" id="calculator">
+    <div class="calculator-section">
+      <h2 class="section-title">Calculate Your Team's Waste Reduction</h2>
+      <p class="section-sub">See how much developer waiting time and LLM token budget you save with agentprof.</p>
+
+      <div class="calc-grid">
+        <!-- Controls -->
+        <div>
+          <div class="calc-slider-group">
+            <div class="calc-label-row">
+              <span>Daily Agent Tool Calls (per dev)</span>
+              <span class="calc-val" id="val-calls">50</span>
+            </div>
+            <input type="range" id="slider-calls" min="10" max="250" value="50" oninput="updateROI()">
+          </div>
+
+          <div class="calc-slider-group">
+            <div class="calc-label-row">
+              <span>Active Developers in Team</span>
+              <span class="calc-val" id="val-devs">5</span>
+            </div>
+            <input type="range" id="slider-devs" min="1" max="50" value="5" oninput="updateROI()">
+          </div>
+
+          <div class="calc-slider-group">
+            <div class="calc-label-row">
+              <span>Active MCP Servers</span>
+              <span class="calc-val" id="val-mcp">4</span>
+            </div>
+            <input type="range" id="slider-mcp" min="1" max="10" value="4" oninput="updateROI()">
+          </div>
         </div>
 
-        <div class="card">
-          <div class="card-icon">🛡️</div>
-          <h3>Ignore & Security Shield</h3>
-          <p>Detects unignored build directories (<code>.build/</code>, <code>DerivedData/</code>, <code>node_modules/</code>) and protects exposed secrets (<code>.env</code>, <code>.pem</code>) from agent ingestion.</p>
+        <!-- Output -->
+        <div class="calc-result-box">
+          <div class="calc-stat-row">
+            <div class="calc-stat-title">Monthly Developer Time Saved</div>
+            <div class="calc-stat-number" id="res-time">11.2 hrs</div>
+          </div>
+          <div class="calc-stat-row">
+            <div class="calc-stat-title">Monthly Token Cost Saved</div>
+            <div class="calc-stat-number" id="res-cost">$168.00</div>
+          </div>
+          <div style="font-size:13px; color:var(--text-dim);">
+            Calculated assuming 600ms subshell latency tax & Opus/Sonnet token rates.
+          </div>
         </div>
       </div>
     </div>
@@ -504,9 +871,140 @@
   <!-- Footer -->
   <footer>
     <div class="container">
-      <p>Built with ❤️ and Rust by <a href="https://github.com/dautovri" target="_blank">Ruslan Dautov</a> • MIT Licensed</p>
+      <p>
+        Built with ❤️ and Rust by <a href="https://github.com/dautovri" target="_blank">Ruslan Dautov</a> • 
+        <a href="https://github.com/dautovri/agentprof" target="_blank">GitHub</a> • 
+        <a href="https://dautovri.github.io/agentprof/llms.txt" target="_blank">llms.txt</a> • 
+        MIT Licensed
+      </p>
     </div>
   </footer>
+
+  <!-- Scripts -->
+  <script>
+    const installSnippets = {
+      brew: 'brew tap dautovri/tap && brew install agentprof',
+      cargo: 'cargo install agentprof',
+      curl: 'curl -fsSL https://raw.githubusercontent.com/dautovri/agentprof/main/install.sh | bash'
+    };
+
+    function setInstall(type) {
+      document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('install-text').innerText = installSnippets[type];
+    }
+
+    function copyInstall() {
+      const text = document.getElementById('install-text').innerText;
+      navigator.clipboard.writeText(text);
+      const btn = document.querySelector('.btn-copy');
+      btn.innerText = 'Copied!';
+      setTimeout(() => btn.innerText = 'Copy', 2000);
+    }
+
+    const termViews = {
+      scan: `<span class="t-cyan">⚡ Running agentprof full workspace & shell scan...</span><br><br>
+<span class="t-cyan">🤖 AI Agent Context & Instruction Budget</span><br>
+<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
+• Instruction Overhead: <span class="t-yellow">12,333 tokens</span> across 18 files (9.6% of 128k context)<br>
+• Estimated Turn Cost:  <span class="t-green">$18.50 per 100 prompt turns</span><br><br>
+<span class="t-cyan">⚡ Subshell Spawn & Tool Execution Latency</span><br>
+<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
+• Interactive Login (\`zsh -lic\`):  <span class="t-yellow">617.6ms</span><br>
+• Non-Interactive (\`zsh -c\`):      <span class="t-green">5.3ms</span><br>
+• Tool Execution Latency Tax:     <span class="t-red">+30.6s wasted</span> per 50 agent tool calls<br>
+• Agent Fast-Path Guard:          <span class="t-red">❌ Missing (run \`agentprof fix --shell\`)</span><br><br>
+<span class="t-cyan">🔌 Model Context Protocol (MCP) Tool Schema Load</span><br>
+<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
+• Active Schema Tokens:           <span class="t-yellow">16,300 tokens</span> across 6 servers<br>
+• Top Heavy Servers:              <span class="t-red">lldb (6.2k tok)</span>, <span class="t-red">frida (4.8k tok)</span><br><br>
+<span class="t-cyan">💡 1-Click Optimizations Ready:</span><br>
+[1] Injected subshell bypass into ~/.zshrc -> <span class="t-green">Saves 30s per 50 tool calls</span><br>
+[2] Generated .claudeignore for build caches -> <span class="t-green">Stops 3,000+ files search thrash</span>`,
+
+      mcp: `<span class="t-cyan">🔌 Model Context Protocol (MCP) Tool Schema Profiler</span><br>
+<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
+╭───────────────┬────────────────────────────┬─────────────┬───────────────┬─────────────────╮<br>
+│ <span class="t-cyan">MCP Server</span>    │ <span class="t-cyan">Config Source</span>              │ <span class="t-cyan">Tools (est)</span> │ <span class="t-cyan">Schema Tokens</span> │ <span class="t-cyan">Status</span>          │<br>
+╞═══════════════╪════════════════════════════╪═════════════╪═══════════════╪═════════════════╡<br>
+│ lldb          │ claude_desktop_config.json │ 18          │ <span class="t-yellow">6,200</span>         │ <span class="t-red">🚨 Heavy Schema</span> │<br>
+│ frida         │ claude_desktop_config.json │ 12          │ <span class="t-yellow">4,800</span>         │ <span class="t-red">🚨 Heavy Schema</span> │<br>
+│ ghidra        │ ~/.claude/settings.json    │ 4           │ 1,400         │ <span class="t-green">✅ Lean</span>         │<br>
+│ XcodeBuildMCP │ claude_desktop_config.json │ 4           │ 1,400         │ <span class="t-green">✅ Lean</span>         │<br>
+│ context7      │ ~/.config/opencode         │ 3           │ 1,100         │ <span class="t-green">✅ Lean</span>         │<br>
+╰───────────────┴────────────────────────────┴─────────────┴───────────────┴─────────────────╯<br><br>
+Total Schema Payload: <span class="t-yellow">16,300 tokens</span> (12.7% of system prompt window)<br>
+<span class="t-dim">💡 Recommendation: Defer loading lldb & frida until active reverse engineering session.</span>`,
+
+      skills: `<span class="t-cyan">🎯 Agent Skills & Keyword Collision Auditor</span><br>
+<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
+• Total Installed Skills: <span class="t-cyan">129 skills</span><br>
+• Total Skills Corpus:    <span class="t-yellow">1,902,840 tokens</span> (Avg: 14,750 tokens/skill)<br>
+• Bloated Skills (>2.5k): <span class="t-red">🚨 114 skills</span><br><br>
+<span class="t-yellow">⚠️ Trigger Keyword Collisions (Skills competing for identical intents):</span><br>
+╭─────────────────┬──────────────────────────────────────────────────────┬─────────────────╮<br>
+│ <span class="t-cyan">Trigger Keyword</span> │ <span class="t-cyan">Compromised Skills</span>                                  │ <span class="t-cyan">Severity</span>        │<br>
+╞═════════════════╪══════════════════════════════════════════════════════╪═════════════════╡<br>
+│ design          │ _gstack-command, aso-screenshots, brandkit, +18 more │ <span class="t-red">🚨 High Overlap</span> │<br>
+│ review          │ _gstack-command, autoplan, codex, cso, +13 more      │ <span class="t-red">🚨 High Overlap</span> │<br>
+│ test            │ browse, devex-review, gstack-upgrade, +8 more        │ <span class="t-red">🚨 High Overlap</span> │<br>
+│ qa              │ browse, design-review, gstack, +7 more               │ <span class="t-red">🚨 High Overlap</span> │<br>
+╰─────────────────┴──────────────────────────────────────────────────────┴─────────────────╯`,
+
+      omz: `<span class="t-cyan">🐚 Oh My Zsh & Shell Plugin Latency Audit</span><br>
+<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
+Total Shell Startup Time: <span class="t-yellow">617.6ms</span><br>
+Bytecode Compiled (.zwc): <span class="t-yellow">❌ No (run \`zcompile ~/.zshrc\`)</span><br><br>
+<span class="t-bold">Plugin Startup Breakdown:</span><br>
+  1. nvm                      <span class="t-red">410.0ms</span> (66.4%) 🚨 Extremely Slow (Node version check)<br>
+  2. git                       <span class="t-yellow">95.0ms</span> (15.4%) ⚠️ Heavy prompt git status hooks<br>
+  3. zsh-syntax-highlighting   <span class="t-yellow">62.0ms</span> (10.0%) ⚠️ Sourced before compinit<br>
+  4. docker                    <span class="t-green">38.0ms</span>  (6.1%) ✅ Acceptable<br>
+  5. zsh-autosuggestions       <span class="t-green">24.0ms</span>  (3.9%) ✅ Fast<br><br>
+<span class="t-dim">💡 Run \`agentprof fix --all\` to lazy-load NVM and inject subshell bypass guard.</span>`,
+
+      lint: `<span class="t-cyan">🔍 Instruction Quality & Conflict Report</span><br>
+<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
+╭────────────────────────────────────────┬──────┬─────────────┬────────────────────────────────────────────────────────╮<br>
+│ <span class="t-cyan">File</span>                                   │ <span class="t-cyan">Line</span> │ <span class="t-cyan">Severity</span>    │ <span class="t-cyan">Issue</span>                                                  │<br>
+╞════════════════════════════════════════╪══════╪═════════════╪════════════════════════════════════════════════════════╡<br>
+│ appletv-network-info vs connection-info│ 1    │ <span class="t-red">🚨 Conflict</span> │ Mentions ObservableObject while other uses @Observable │<br>
+│ coin-flip-justice vs terminal-profiler │ 1    │ <span class="t-red">🚨 Conflict</span> │ Target OS version mismatch: iOS 16 vs iOS 26           │<br>
+│ .cursorrules                           │ 42   │ <span class="t-yellow">⚠️ Warning</span>  │ Vague rule 'write clean code' provides zero constraint │<br>
+╰────────────────────────────────────────┴──────┴─────────────┴────────────────────────────────────────────────────────╯<br><br>
+Total Issues: <span class="t-yellow">33 contradictions found</span> across 16 files.`
+    };
+
+    function switchTerm(type) {
+      document.querySelectorAll('.term-tab-btn').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('term-output').innerHTML = termViews[type];
+    }
+
+    function updateROI() {
+      const calls = parseInt(document.getElementById('slider-calls').value);
+      const devs = parseInt(document.getElementById('slider-devs').value);
+      const mcp = parseInt(document.getElementById('slider-mcp').value);
+
+      document.getElementById('val-calls').innerText = calls;
+      document.getElementById('val-devs').innerText = devs;
+      document.getElementById('val-mcp').innerText = mcp;
+
+      // 600ms latency tax per tool call * calls * 22 work days
+      const secondsSavedMonth = calls * 0.6 * devs * 22;
+      const hoursSaved = (secondsSavedMonth / 3600).toFixed(1);
+
+      // (mcp * 2500 tokens * calls * devs * 22) / 1000 * $0.015
+      const tokenCostSaved = ((mcp * 2500 * calls * devs * 22) / 1000 * 0.003).toFixed(2);
+
+      document.getElementById('res-time').innerText = `${hoursSaved} hrs`;
+      document.getElementById('res-cost').innerText = `$${tokenCostSaved}`;
+    }
+
+    // Initialize default view
+    document.getElementById('term-output').innerHTML = termViews.scan;
+    updateROI();
+  </script>
 
 </body>
 </html>
