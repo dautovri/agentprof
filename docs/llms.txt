@@ -2,27 +2,59 @@
 
 > AI Agent Workspace Optimizer & Shell Latency Profiler
 
-agentprof is a high-performance Rust CLI & TUI tool designed to eliminate subshell startup latency, profile Oh My Zsh plugins, audit AI context bloat (AGENTS.md, CLAUDE.md, .cursorrules), inspect MCP tool schemas, and accelerate AI coding agents like Claude Code, OpenCode, Cursor, and Grok.
+agentprof is a Rust CLI and TUI that measures where AI coding agents (Claude Code,
+OpenCode, Cursor, Codex, Grok, Aider) lose time and context: subshell startup
+latency, MCP tool-schema token load, instruction-file bloat, and skill trigger
+collisions.
+
+Design principle: every figure is measured, never guessed. Values that have not
+been measured are reported as absent rather than filled in with a placeholder.
 
 ## Installation
 - Homebrew: `brew tap dautovri/tap && brew install agentprof`
 - Cargo: `cargo install --git https://github.com/dautovri/agentprof.git`
-- 1-Line: `curl -fsSL https://raw.githubusercontent.com/dautovri/agentprof/main/install.sh | bash`
+- Script: `curl -fsSL https://raw.githubusercontent.com/dautovri/agentprof/main/install.sh | bash`
 - Repository: https://github.com/dautovri/agentprof
-- Live Documentation: https://dautovri.github.io/agentprof/
+- Documentation: https://dautovri.github.io/agentprof/
 
-## Core Features & Commands
-- `agentprof scan`: Unified workspace audit (Context + Subshell + MCP + Skills + Secrets).
-- `agentprof tui`: Full-screen interactive terminal dashboard.
-- `agentprof mcp`: Profiles active Model Context Protocol server tool schemas and token load.
-- `agentprof skills`: Audits installed agent skills and detects trigger keyword collisions.
-- `agentprof agent`: Profiles OpenCode, Claude Code, and Grok environments.
-- `agentprof omz`: Profiles Oh My Zsh plugin startup latency with microsecond accuracy.
-- `agentprof bench`: Benchmarks subshell spawn time and computes agent tool latency penalties.
-- `agentprof lint`: Detects instruction contradictions and vague rules across agent files.
-- `agentprof compress <file>`: Compresses verbose instruction files into dense rule sheets.
-- `agentprof wrap "<cmd>"`: Injects subshell fast-path into live agent sessions.
-- `agentprof report --markdown`: Generates a 0-100 Workspace Health Score for GitHub PRs.
-- `agentprof fix --all`: Injects non-interactive fast-path into ~/.zshrc and creates .claudeignore.
-- `agentprof compile`: Compiles monolithic rules into modular JIT instructions.
-- `agentprof ci`: Generates a GitHub Actions workflow for PR context budget checks.
+## Commands
+- `agentprof scan`: Unified audit (context + subshell + MCP + skills + secrets).
+- `agentprof tui`: Interactive dashboard. Requires a real terminal.
+- `agentprof context`: Token cost of instruction files (AGENTS.md, CLAUDE.md,
+  .cursorrules, .windsurfrules, copilot-instructions.md, GEMINI.md, .clinerules,
+  CONVENTIONS.md, CODEX.md). Honours .gitignore.
+- `agentprof mcp [--probe]`: Lists configured MCP servers. `--probe` performs a
+  real MCP handshake (initialize -> tools/list) against each server and counts
+  the exact tokens its tool definitions add per turn. Results are cached.
+  Servers never probed report no token figure rather than an estimate.
+- `agentprof skills`: Audits installed skills, token weight, and trigger
+  collisions. Deduplicates skills reachable through multiple roots.
+- `agentprof agent`: Profiles OpenCode, Claude Code, and Grok configurations.
+- `agentprof omz`: Times Oh My Zsh plugins and slow init hooks by sourcing them
+  in an isolated shell. Hooks that cannot be timed are reported as not measured.
+- `agentprof bench [--iterations N]`: Median subshell spawn time after warm-up,
+  for the shell named by $SHELL. Reports the avoidable interactive-vs-non-interactive tax.
+- `agentprof lint`: Vague rules, duplicated directives, hedged absolutes, and
+  cross-file convention contradictions.
+- `agentprof compress <file> [--overwrite]`: Compresses instruction files. Keeps a backup.
+- `agentprof wrap "<cmd>"`: Runs an agent with AGENTPROF_FAST_PATH=1 exported and
+  propagates its exit code.
+- `agentprof report [--markdown] [--fail-under N]`: 0-100 health score across five
+  equally weighted categories. `--fail-under` exits non-zero for CI gating.
+- `agentprof history [--sessions N]`: Real token usage and cost parsed from Claude
+  Code transcripts, using cache-aware pricing. `--sessions 0` scans all.
+- `agentprof fix [--ignore] [--shell] [--zcompile] [--all] [--dry-run]`: Merges
+  ignore patterns without discarding existing rules (backups kept). `--shell`
+  installs an opt-in guard that activates only when AGENTPROF_FAST_PATH=1.
+- `agentprof compile`: Splits monolithic rule files into modular JIT instructions.
+- `agentprof ci [--min-score N] [--force]`: Generates a GitHub Actions workflow
+  that fails the build below the score threshold. Never overwrites without --force.
+- `agentprof completions <shell>`: zsh, bash, fish, or powershell completions.
+
+## Global flags
+- `--json`: Machine-readable output on stdout, with no human-facing banners.
+- `--path <DIR>` or a positional path: target directory.
+
+## Cost model
+Claude Sonnet list pricing: $3/Mtok input, $15/Mtok output. Cache writes bill at
+1.25x and cache reads at 0.1x the input rate.

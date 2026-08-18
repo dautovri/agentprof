@@ -7,7 +7,7 @@ impl Formatters {
         let len = s.len();
         for (i, c) in s.chars().enumerate() {
             result.push(c);
-            if (len - 1 - i) % 3 == 0 && i != len - 1 {
+            if (len - 1 - i).is_multiple_of(3) && i != len - 1 {
                 result.push(',');
             }
         }

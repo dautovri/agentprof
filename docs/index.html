@@ -4,21 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>agentprof — AI Agent Workspace Optimizer & Shell Latency Profiler</title>
-  <meta name="description" content="Eliminate subshell startup latency, profile Oh My Zsh plugins, audit AI context bloat, inspect MCP tool schemas, and accelerate AI coding agents.">
+  <meta name="description" content="Measure what slows AI coding agents down: subshell startup latency, MCP tool-schema tokens, instruction-file bloat, and skill trigger collisions. A Rust CLI that reports measured figures, never estimates.">
   <meta name="keywords" content="agentprof, AI agent profiler, Claude Code, Cursor, OpenCode, Grok, Oh My Zsh profiler, subshell latency, MCP schema profiler, context window optimizer, prompt engineering, developer tools">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
+  <meta name="theme-color" content="#07090e">
   <link rel="canonical" href="https://dautovri.github.io/agentprof/">
   <link rel="alternate" type="text/plain" href="https://dautovri.github.io/agentprof/llms.txt" title="LLM Documentation">
 
   <!-- Open Graph / Social -->
   <meta property="og:title" content="agentprof — AI Agent Workspace Optimizer">
-  <meta property="og:description" content="Profile Oh My Zsh plugins, benchmark subshell latency, audit MCP schemas, and accelerate AI coding agents.">
+  <meta property="og:description" content="Measure subshell latency, MCP tool-schema tokens, instruction bloat, and skill collisions. Every figure measured, never guessed.">
   <meta property="og:url" content="https://dautovri.github.io/agentprof/">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="agentprof">
+  <meta property="og:locale" content="en_US">
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="agentprof — AI Agent Workspace Optimizer">
-  <meta name="twitter:description" content="Profile Oh My Zsh plugins, benchmark subshell latency, audit MCP schemas, and accelerate AI coding agents.">
+  <meta name="twitter:description" content="Measure subshell latency, MCP tool-schema tokens, instruction bloat, and skill collisions. Every figure measured, never guessed.">
 
   <!-- Schema.org JSON-LD -->
   <script type="application/ld+json">
@@ -28,7 +32,7 @@
     "name": "agentprof",
     "operatingSystem": "macOS, Linux",
     "applicationCategory": "DeveloperApplication",
-    "description": "High-performance Rust CLI & TUI to eliminate subshell latency, profile Oh My Zsh plugins, audit AI instruction bloat, and inspect MCP tool schemas.",
+    "description": "Rust CLI and TUI that measures subshell startup latency, MCP tool-schema token load, AI instruction-file bloat, and skill trigger collisions.",
     "url": "https://dautovri.github.io/agentprof/",
     "downloadUrl": "https://github.com/dautovri/agentprof",
     "license": "https://github.com/dautovri/agentprof/blob/main/LICENSE",
@@ -48,7 +52,8 @@
   <!-- Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"></noscript>
 
   <style>
     :root {
@@ -663,9 +668,9 @@
         <span class="pulse-dot"></span>
         <span>Built for Claude Code, OpenCode, Cursor & Grok</span>
       </div>
-      <h1>Accelerate AI Coding Agents.<br>Eliminate Shell & Context Bloat.</h1>
+      <h1>Find What Slows Your<br>AI Coding Agent Down.</h1>
       <p class="hero-desc">
-        A high-performance Rust CLI & TUI that slashes subshell tool latency, audits MCP tool schemas, resolves skill collisions, and eliminates instruction token waste.
+        A Rust CLI &amp; TUI that measures the hidden cost of every agent turn — subshell startup latency, MCP tool-schema tokens, instruction bloat, and skill collisions. Every number is measured, never guessed.
       </p>
 
       <!-- 3-Way Install Widget -->
@@ -684,7 +689,7 @@
         </div>
       </div>
 
-      <!-- Before vs After Metric Strip -->
+      <!-- Measured overhead strip: each pair is a real measurement, not an automatic saving -->
       <div class="comparison-strip" id="benchmarks">
         <div class="comp-card">
           <div class="comp-label">Subshell Tool Latency</div>
@@ -692,7 +697,7 @@
             <span class="comp-before">617.6ms</span>
             <span class="comp-after">5.3ms</span>
           </div>
-          <div class="comp-saving">⚡ 99.1% Faster Tool Spawns</div>
+          <div class="comp-saving">⚡ Interactive vs non-interactive, measured here</div>
         </div>
 
         <div class="comp-card">
@@ -701,16 +706,16 @@
             <span class="comp-before">+30.8s wait</span>
             <span class="comp-after">0.26s</span>
           </div>
-          <div class="comp-saving">⚡ 30 seconds saved per session</div>
+          <div class="comp-saving">⚡ What 50 calls cost; recoverable with an opt-in guard</div>
         </div>
 
         <div class="comp-card">
-          <div class="comp-label">Instruction Context Load</div>
+          <div class="comp-label">MCP Schema Load Per Turn</div>
           <div class="comp-row">
-            <span class="comp-before">16,300 tok</span>
-            <span class="comp-after">1,200 tok</span>
+            <span class="comp-before">33,869 tok</span>
+            <span class="comp-after">12,153 tok</span>
           </div>
-          <div class="comp-saving">⚡ 92.6% Context Reduction</div>
+          <div class="comp-saving">⚡ Measured; after disabling the 2 heaviest servers</div>
         </div>
       </div>
 
@@ -744,7 +749,7 @@
     <div class="container">
       <div class="section-head">
         <h2 class="section-title">The Complete Agent Optimization Stack</h2>
-        <p class="section-sub">Engineered in Rust with sub-millisecond execution for power developers.</p>
+        <p class="section-sub">Written in Rust. Every figure it reports is measured, never guessed.</p>
       </div>
 
       <div class="bento-grid">
@@ -770,7 +775,7 @@
           </div>
           <div class="bento-metric">
             <span>Schema Load</span>
-            <span class="t-yellow">lldb: 6.2k tok • frida: 4.8k tok</span>
+            <span class="t-yellow">ghidra: 14.1k tok • lldb: 3.4k tok</span>
           </div>
         </div>
 
@@ -783,7 +788,7 @@
           </div>
           <div class="bento-metric">
             <span>Collision Guard</span>
-            <span class="t-red">129 Skills • 6 Trigger Overlaps</span>
+            <span class="t-red">76 Skills • 6 Trigger Overlaps</span>
           </div>
         </div>
 
@@ -796,7 +801,7 @@
           </div>
           <div class="bento-metric">
             <span>Rule Conflict Linter</span>
-            <span class="t-cyan">33 Contradictions Pinpointed & Fixed</span>
+            <span class="t-cyan">Conflicts pinpointed by file & line</span>
           </div>
         </div>
 
@@ -805,11 +810,11 @@
           <div>
             <div class="bento-icon">🛡️</div>
             <h3>Workspace Hygiene & Security Shield</h3>
-            <p>Prevents AI agent search and grep tools from indexing massive unignored directories (<code>.build/</code>, <code>DerivedData/</code>, <code>node_modules/</code>, <code>target/</code>) or accidentally ingesting sensitive credential files (<code>.env</code>, <code>*.pem</code>, <code>credentials.json</code>). Generates zero-leak <code>.claudeignore</code> and <code>.cursorignore</code> files in 1 click.</p>
+            <p>Prevents AI agent search and grep tools from indexing massive unignored directories (<code>.build/</code>, <code>DerivedData/</code>, <code>node_modules/</code>, <code>target/</code>) or accidentally ingesting sensitive credential files (<code>.env</code>, <code>*.pem</code>, <code>credentials.json</code>). Merges patterns into <code>.claudeignore</code> and <code>.cursorignore</code> without discarding existing rules, keeping a backup.</p>
           </div>
           <div class="bento-metric">
             <span>1-Click Guard</span>
-            <span class="t-green">agentprof fix --all (Generates .claudeignore + ~/.zshrc Fast-Path)</span>
+            <span class="t-green">agentprof fix --dry-run (preview) → fix --ignore (merges, never overwrites)</span>
           </div>
         </div>
       </div>
@@ -819,8 +824,8 @@
   <!-- Interactive ROI Calculator -->
   <section class="container" id="calculator">
     <div class="calculator-section">
-      <h2 class="section-title">Calculate Your Team's Waste Reduction</h2>
-      <p class="section-sub">See how much developer waiting time and LLM token budget you save with agentprof.</p>
+      <h2 class="section-title">Estimate Your Team's Agent Overhead</h2>
+      <p class="section-sub">Estimate the overhead agentprof surfaces across a team, so you can decide what is worth cutting.</p>
 
       <div class="calc-grid">
         <!-- Controls -->
@@ -830,7 +835,7 @@
               <span>Daily Agent Tool Calls (per dev)</span>
               <span class="calc-val" id="val-calls">50</span>
             </div>
-            <input type="range" id="slider-calls" min="10" max="250" value="50" oninput="updateROI()">
+            <input type="range" id="slider-calls" aria-label="Daily agent tool calls per developer" aria-describedby="val-calls" min="10" max="250" value="50" oninput="updateROI()">
           </div>
 
           <div class="calc-slider-group">
@@ -838,7 +843,7 @@
               <span>Active Developers in Team</span>
               <span class="calc-val" id="val-devs">5</span>
             </div>
-            <input type="range" id="slider-devs" min="1" max="50" value="5" oninput="updateROI()">
+            <input type="range" id="slider-devs" aria-label="Active developers in team" aria-describedby="val-devs" min="1" max="50" value="5" oninput="updateROI()">
           </div>
 
           <div class="calc-slider-group">
@@ -846,22 +851,22 @@
               <span>Active MCP Servers</span>
               <span class="calc-val" id="val-mcp">4</span>
             </div>
-            <input type="range" id="slider-mcp" min="1" max="10" value="4" oninput="updateROI()">
+            <input type="range" id="slider-mcp" aria-label="Active MCP servers" aria-describedby="val-mcp" min="1" max="10" value="4" oninput="updateROI()">
           </div>
         </div>
 
         <!-- Output -->
-        <div class="calc-result-box">
+        <div class="calc-result-box" aria-live="polite">
           <div class="calc-stat-row">
-            <div class="calc-stat-title">Monthly Developer Time Saved</div>
-            <div class="calc-stat-number" id="res-time">11.2 hrs</div>
+            <div class="calc-stat-title">Monthly Developer Time Lost To Shell Startup</div>
+            <div class="calc-stat-number" id="res-time">0.9 hrs</div>
           </div>
           <div class="calc-stat-row">
-            <div class="calc-stat-title">Monthly Token Cost Saved</div>
-            <div class="calc-stat-number" id="res-cost">$168.00</div>
+            <div class="calc-stat-title">Monthly Token Cost Of MCP Schemas</div>
+            <div class="calc-stat-number" id="res-cost">$165.00</div>
           </div>
           <div style="font-size:13px; color:var(--text-dim);">
-            Calculated assuming 600ms subshell latency tax & Opus/Sonnet token rates.
+            Assumes a 600ms subshell tax, 2,500 schema tokens per MCP server, and Claude Sonnet input pricing ($3/Mtok). Run <code>agentprof bench</code> and <code>agentprof mcp --probe</code> for your own numbers.
           </div>
         </div>
       </div>
@@ -907,7 +912,7 @@
 <span class="t-cyan">🤖 AI Agent Context & Instruction Budget</span><br>
 <span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
 • Instruction Overhead: <span class="t-yellow">12,333 tokens</span> across 18 files (9.6% of 128k context)<br>
-• Estimated Turn Cost:  <span class="t-green">$18.50 per 100 prompt turns</span><br><br>
+• Estimated Turn Cost:  <span class="t-green">$3.70 per 100 prompt turns</span><br><br>
 <span class="t-cyan">⚡ Subshell Spawn & Tool Execution Latency</span><br>
 <span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
 • Interactive Login (\`zsh -lic\`):  <span class="t-yellow">617.6ms</span><br>
@@ -916,38 +921,40 @@
 • Agent Fast-Path Guard:          <span class="t-red">❌ Missing (run \`agentprof fix --shell\`)</span><br><br>
 <span class="t-cyan">🔌 Model Context Protocol (MCP) Tool Schema Load</span><br>
 <span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-• Active Schema Tokens:           <span class="t-yellow">16,300 tokens</span> across 6 servers<br>
-• Top Heavy Servers:              <span class="t-red">lldb (6.2k tok)</span>, <span class="t-red">frida (4.8k tok)</span><br><br>
-<span class="t-cyan">💡 1-Click Optimizations Ready:</span><br>
-[1] Injected subshell bypass into ~/.zshrc -> <span class="t-green">Saves 30s per 50 tool calls</span><br>
-[2] Generated .claudeignore for build caches -> <span class="t-green">Stops 3,000+ files search thrash</span>`,
+• Measured Schema Tokens:         <span class="t-yellow">26,293 tokens</span> across 5 of 6 servers<br>
+• Top Heavy Servers:              <span class="t-red">ghidra (14.1k tok)</span>, <span class="t-red">XcodeBuildMCP (7.2k tok)</span><br><br>
+<span class="t-cyan">💡 Optimizations Ready:</span><br>
+[1] Install opt-in subshell fast-path guard -> <span class="t-green">agentprof fix --shell</span><br>
+[2] Merge build caches into .claudeignore   -> <span class="t-green">agentprof fix --ignore</span>`,
 
       mcp: `<span class="t-cyan">🔌 Model Context Protocol (MCP) Tool Schema Profiler</span><br>
 <span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-╭───────────────┬────────────────────────────┬─────────────┬───────────────┬─────────────────╮<br>
-│ <span class="t-cyan">MCP Server</span>    │ <span class="t-cyan">Config Source</span>              │ <span class="t-cyan">Tools (est)</span> │ <span class="t-cyan">Schema Tokens</span> │ <span class="t-cyan">Status</span>          │<br>
-╞═══════════════╪════════════════════════════╪═════════════╪═══════════════╪═════════════════╡<br>
-│ lldb          │ claude_desktop_config.json │ 18          │ <span class="t-yellow">6,200</span>         │ <span class="t-red">🚨 Heavy Schema</span> │<br>
-│ frida         │ claude_desktop_config.json │ 12          │ <span class="t-yellow">4,800</span>         │ <span class="t-red">🚨 Heavy Schema</span> │<br>
-│ ghidra        │ ~/.claude/settings.json    │ 4           │ 1,400         │ <span class="t-green">✅ Lean</span>         │<br>
-│ XcodeBuildMCP │ claude_desktop_config.json │ 4           │ 1,400         │ <span class="t-green">✅ Lean</span>         │<br>
-│ context7      │ ~/.config/opencode         │ 3           │ 1,100         │ <span class="t-green">✅ Lean</span>         │<br>
-╰───────────────┴────────────────────────────┴─────────────┴───────────────┴─────────────────╯<br><br>
-Total Schema Payload: <span class="t-yellow">16,300 tokens</span> (12.7% of system prompt window)<br>
-<span class="t-dim">💡 Recommendation: Defer loading lldb & frida until active reverse engineering session.</span>`,
+<span class="t-dim">$ agentprof mcp --probe</span><br>
+╭───────────────┬────────┬───────┬───────────────┬─────────────────────╮<br>
+│ <span class="t-cyan">MCP Server</span>    │ <span class="t-cyan">Scope</span>  │ <span class="t-cyan">Tools</span> │ <span class="t-cyan">Schema Tokens</span> │ <span class="t-cyan">Status</span>              │<br>
+╞═══════════════╪════════╪═══════╪═══════════════╪═════════════════════╡<br>
+│ ghidra        │ global │ 103   │ <span class="t-yellow">14,140</span>        │ <span class="t-red">🚨 Heavy (measured)</span> │<br>
+│ XcodeBuildMCP │ global │ 63    │ <span class="t-yellow">7,212</span>         │ <span class="t-red">🚨 Heavy (measured)</span> │<br>
+│ lldb          │ global │ 40    │ <span class="t-yellow">3,356</span>         │ <span class="t-red">🚨 Heavy (measured)</span> │<br>
+│ frida         │ global │ 13    │ 1,339         │ <span class="t-green">✅ Lean (measured)</span>  │<br>
+│ nvd-cve       │ global │ 2     │ 246           │ <span class="t-green">✅ Lean (measured)</span>  │<br>
+│ context7      │ global │ —     │ —             │ <span class="t-dim">❔ Unreachable</span>      │<br>
+╰───────────────┴────────┴───────┴───────────────┴─────────────────────╯<br><br>
+Measured Schema Load: <span class="t-yellow">26,293 tokens</span> across 5 of 6 servers (20.5% of a 128k context)<br>
+<span class="t-dim">💡 Every number above came from a real tools/list handshake — never a guess.</span>`,
 
       skills: `<span class="t-cyan">🎯 Agent Skills & Keyword Collision Auditor</span><br>
 <span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-• Total Installed Skills: <span class="t-cyan">129 skills</span><br>
-• Total Skills Corpus:    <span class="t-yellow">1,902,840 tokens</span> (Avg: 14,750 tokens/skill)<br>
-• Bloated Skills (>2.5k): <span class="t-red">🚨 114 skills</span><br><br>
+• Total Installed Skills: <span class="t-cyan">76 skills</span><br>
+• Total Skills Corpus:    <span class="t-yellow">1,013,049 tokens</span> (Avg: 13,329 tokens/skill)<br>
+• Bloated Skills (>2.5k): <span class="t-red">🚨 65 skills</span><br><br>
 <span class="t-yellow">⚠️ Trigger Keyword Collisions (Skills competing for identical intents):</span><br>
 ╭─────────────────┬──────────────────────────────────────────────────────┬─────────────────╮<br>
 │ <span class="t-cyan">Trigger Keyword</span> │ <span class="t-cyan">Compromised Skills</span>                                  │ <span class="t-cyan">Severity</span>        │<br>
 ╞═════════════════╪══════════════════════════════════════════════════════╪═════════════════╡<br>
-│ design          │ _gstack-command, aso-screenshots, brandkit, +18 more │ <span class="t-red">🚨 High Overlap</span> │<br>
-│ review          │ _gstack-command, autoplan, codex, cso, +13 more      │ <span class="t-red">🚨 High Overlap</span> │<br>
-│ test            │ browse, devex-review, gstack-upgrade, +8 more        │ <span class="t-red">🚨 High Overlap</span> │<br>
+│ design          │ autoplan, design-consultation, design-html, +10 more │ <span class="t-red">🚨 High Overlap</span> │<br>
+│ review          │ autoplan, design-review, devex-review, +6 more       │ <span class="t-red">🚨 High Overlap</span> │<br>
+│ ios             │ ios-clean, ios-design-review, ios-fix, +3 more       │ <span class="t-red">🚨 High Overlap</span> │<br>
 │ qa              │ browse, design-review, gstack, +7 more               │ <span class="t-red">🚨 High Overlap</span> │<br>
 ╰─────────────────┴──────────────────────────────────────────────────────┴─────────────────╯`,
 
@@ -994,7 +1001,7 @@ Total Issues: <span class="t-yellow">33 contradictions found</span> across 16 fi
       const secondsSavedMonth = calls * 0.6 * devs * 22;
       const hoursSaved = (secondsSavedMonth / 3600).toFixed(1);
 
-      // (mcp * 2500 tokens * calls * devs * 22) / 1000 * $0.015
+      // (mcp * 2500 tokens * calls * devs * 22) / 1000 * $0.003 (Sonnet input rate)
       const tokenCostSaved = ((mcp * 2500 * calls * devs * 22) / 1000 * 0.003).toFixed(2);
 
       document.getElementById('res-time').innerText = `${hoursSaved} hrs`;

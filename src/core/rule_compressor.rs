@@ -102,14 +102,24 @@ impl RuleCompressor {
         lines.join("\n")
     }
 
-    pub fn save_compressed_file(file_path: &Path, overwrite: bool) -> Result<PathBuf> {
-        let report = Self::compress_file(file_path)?;
+    /// Writes the already-computed report, so the file is compressed once.
+    ///
+    /// The command previously called `compress_file` and then
+    /// `save_compressed_file`, which compressed and re-tokenized the whole file
+    /// a second time purely to write it out.
+    pub fn save_report(report: &CompressionReport, overwrite: bool) -> Result<PathBuf> {
+        let file_path = report.source_path.as_path();
 
         let target_path = if overwrite {
-            // Create backup first
-            let bak = file_path.with_extension("bak");
-            let original = fs::read_to_string(file_path)?;
-            fs::write(&bak, original)?;
+            // Back up first, never clobbering an earlier backup.
+            let mut bak = file_path.with_extension("bak");
+            let mut n = 1;
+            while bak.exists() {
+                bak = file_path.with_extension(format!("bak.{}", n));
+                n += 1;
+            }
+            fs::copy(file_path, &bak)
+                .with_context(|| format!("Failed to back up {}", file_path.display()))?;
             file_path.to_path_buf()
         } else {
             let file_stem = file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("rules");
@@ -117,7 +127,7 @@ impl RuleCompressor {
             file_path.with_file_name(format!("{}.compressed.{}", file_stem, ext))
         };
 
-        fs::write(&target_path, report.compressed_content)?;
+        fs::write(&target_path, &report.compressed_content)?;
         Ok(target_path)
     }
 }

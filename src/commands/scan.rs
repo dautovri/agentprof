@@ -14,7 +14,9 @@ pub struct ScanCommand;
 
 impl ScanCommand {
     pub fn execute(target_path: &Path, json: bool) -> Result<()> {
-        println!("{}", "⚡ Running agentprof full workspace & shell scan...".bold());
+        if !json {
+            println!("{}", "⚡ Running agentprof full workspace & shell scan...".bold());
+        }
 
         let context_summary = InstructionScanner::scan_workspace(target_path)?;
         let bench_result = ShellBenchmarker::run_benchmark(5)?;
@@ -59,7 +61,7 @@ impl ScanCommand {
             rec_count += 1;
             println!("  [{}] Compile monolithic rules into JIT modules: `agentprof compile`", rec_count);
         }
-        if mcp_report.total_estimated_tokens > 5000 {
+        if mcp_report.measured_schema_tokens > 5000 {
             rec_count += 1;
             println!("  [{}] Profile & prune heavy MCP tool schemas: `agentprof mcp`", rec_count);
         }

@@ -11,7 +11,9 @@ pub struct LintCommand;
 
 impl LintCommand {
     pub fn execute(workspace_root: &Path, json: bool) -> Result<()> {
-        println!("{}", "🔍 Linting workspace instruction files & checking for contradictions...".bold());
+        if !json {
+            println!("{}", "🔍 Linting workspace instruction files & checking for contradictions...".bold());
+        }
 
         let report = RuleLinter::lint_workspace(workspace_root)?;
 

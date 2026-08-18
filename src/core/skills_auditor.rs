@@ -39,6 +39,14 @@ pub struct SkillsAuditReport {
     pub recommendations: Vec<String>,
 }
 
+/// Intents that commonly collide across installed skills.
+const COMMON_TRIGGERS: &[&str] = &[
+    "review", "qa", "test", "security", "audit", "design", "diagram", "deploy", "ship",
+    "screenshot", "ios", "swift", "mcp", "analytics", "scrape", "retro", "benchmark",
+    "canary", "freeze", "brand", "landing", "pricing", "refactor", "migrate", "release",
+    "debug", "docs", "documentation", "plan", "lint", "format",
+];
+
 pub struct SkillsAuditor;
 
 impl SkillsAuditor {
@@ -84,7 +92,12 @@ impl SkillsAuditor {
                     continue;
                 }
                 if path.file_name().map(|n| n == "SKILL.md").unwrap_or(false) {
-                    if !seen_paths.insert(path.to_path_buf()) {
+                    // Skill trees are reachable through several roots (plugin
+                    // bundles, symlinked bundles), so the same SKILL.md appeared
+                    // more than once and was counted twice in totals and in the
+                    // "heaviest skills" list. Canonicalizing collapses those.
+                    let identity = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+                    if !seen_paths.insert(identity) {
                         continue;
                     }
 
@@ -98,7 +111,7 @@ impl SkillsAuditor {
                         let tokens = TokenCounter::count_cl100k(&content);
                         let lines = content.lines().count();
                         let desc = Self::extract_description(&content);
-                        let triggers = Self::extract_triggers(&skill_name, &desc, &content);
+                        let triggers = Self::extract_triggers(&skill_name, &desc);
                         let is_bloated = tokens > 2_500;
 
                         all_skills.push(SkillItem {
@@ -121,11 +134,11 @@ impl SkillsAuditor {
         let collisions = Self::detect_collisions(&all_skills);
 
         // Sort by tokens descending
-        all_skills.sort_by(|a, b| b.tokens.cmp(&a.tokens));
+        all_skills.sort_by(|a, b| b.tokens.cmp(&a.tokens).then_with(|| a.name.cmp(&b.name)));
 
         let total_skills = all_skills.len();
         let total_tokens: usize = all_skills.iter().map(|s| s.tokens).sum();
-        let average_tokens = if total_skills > 0 { total_tokens / total_skills } else { 0 };
+        let average_tokens = total_tokens.checked_div(total_skills).unwrap_or(0);
         let bloated_skills_count = all_skills.iter().filter(|s| s.is_bloated).count();
 
         let top_heavy_skills = all_skills.iter().take(10).cloned().collect();
@@ -150,35 +163,62 @@ impl SkillsAuditor {
         })
     }
 
+    /// Reads `description:` from YAML frontmatter, falling back to an XML-style
+    /// tag. Only the frontmatter block is searched so a `description:` line
+    /// inside example code cannot be mistaken for the skill's own description.
     fn extract_description(content: &str) -> String {
-        for line in content.lines() {
-            let trim = line.trim();
-            if trim.starts_with("description:") {
-                return trim.trim_start_matches("description:").trim().trim_matches('"').to_string();
-            }
-            if trim.starts_with("<description>") {
-                return trim.trim_start_matches("<description>").trim_end_matches("</description>").trim().to_string();
+        let mut lines = content.lines();
+        if lines.next().map(str::trim) == Some("---") {
+            for line in lines {
+                let trimmed = line.trim();
+                if trimmed == "---" {
+                    break;
+                }
+                if let Some(rest) = trimmed.strip_prefix("description:") {
+                    let value = rest.trim().trim_matches('"').trim_matches('\'');
+                    if !value.is_empty() && value != ">" && value != "|" {
+                        return value.to_string();
+                    }
+                }
             }
         }
-        "No description found".to_string()
+
+        for line in content.lines().take(40) {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("<description>") {
+                return rest.trim_end_matches("</description>").trim().to_string();
+            }
+        }
+        String::new()
     }
 
-    fn extract_triggers(name: &str, desc: &str, content: &str) -> Vec<String> {
-        let mut triggers = Vec::new();
-        let corpus = format!("{} {} {}", name, desc, content.lines().take(25).collect::<Vec<_>>().join(" ")).to_lowercase();
+    /// Extracts trigger keywords from the skill's *name and description* only.
+    ///
+    /// Two earlier problems are fixed here. First, scanning the first 25 lines of
+    /// body text meant incidental prose drove collisions. Second, matching was
+    /// bare substring containment, so "portfolios" matched `ios`, "latest"
+    /// matched `test`, and "equal" matched `qa` — producing collision reports
+    /// full of skills that share no actual intent.
+    fn extract_triggers(name: &str, desc: &str) -> Vec<String> {
+        let corpus = format!("{} {}", name.replace('-', " "), desc).to_lowercase();
+        let words: HashSet<&str> = corpus
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect();
 
-        let common_keywords = [
-            "review", "qa", "test", "security", "audit", "design", "diagram", "deploy", "ship",
-            "screenshot", "ios", "swift", "mcp", "analytics", "scrape", "retro", "office-hours",
-            "benchmark", "canary", "freeze", "careful", "brand", "landing", "pricing"
-        ];
-
-        for kw in common_keywords {
-            if corpus.contains(kw) {
-                triggers.push(kw.to_string());
-            }
-        }
-        triggers
+        COMMON_TRIGGERS
+            .iter()
+            .filter(|kw| {
+                // Multi-word triggers still need a substring check, but anchored
+                // on the normalized corpus rather than raw file text.
+                if kw.contains(' ') {
+                    corpus.contains(*kw)
+                } else {
+                    words.contains(*kw)
+                }
+            })
+            .map(|kw| kw.to_string())
+            .collect()
     }
 
     fn detect_collisions(skills: &[SkillItem]) -> Vec<SkillCollision> {
@@ -205,7 +245,72 @@ impl SkillsAuditor {
             }
         }
 
-        collisions.sort_by(|a, b| b.colliding_skills.len().cmp(&a.colliding_skills.len()));
+        collisions.sort_by_key(|c| std::cmp::Reverse(c.colliding_skills.len()));
         collisions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_triggers_use_word_boundaries() {
+        // "portfolios" contains "ios" and "latest" contains "test", but neither
+        // is a real trigger for those intents.
+        let triggers = SkillsAuditor::extract_triggers(
+            "brutalist-skill",
+            "For data-heavy dashboards and portfolios using the latest layouts.",
+        );
+        assert!(!triggers.contains(&"ios".to_string()), "got {:?}", triggers);
+        assert!(!triggers.contains(&"test".to_string()), "got {:?}", triggers);
+    }
+
+    #[test]
+    fn test_real_triggers_are_still_detected() {
+        let triggers = SkillsAuditor::extract_triggers("ios-qa", "Run a QA pass on an iOS app.");
+        assert!(triggers.contains(&"ios".to_string()), "got {:?}", triggers);
+        assert!(triggers.contains(&"qa".to_string()), "got {:?}", triggers);
+    }
+
+    #[test]
+    fn test_hyphenated_names_split_into_words() {
+        let triggers = SkillsAuditor::extract_triggers("design-review", "");
+        assert!(triggers.contains(&"design".to_string()));
+        assert!(triggers.contains(&"review".to_string()));
+    }
+
+    #[test]
+    fn test_description_read_from_frontmatter() {
+        let content = "---\nname: demo\ndescription: Audits app store metadata\n---\n\n# Body\ndescription: not this one\n";
+        assert_eq!(
+            SkillsAuditor::extract_description(content),
+            "Audits app store metadata"
+        );
+    }
+
+    #[test]
+    fn test_description_absent_yields_empty() {
+        assert_eq!(SkillsAuditor::extract_description("# Just a heading\n"), "");
+    }
+
+    #[test]
+    fn test_collision_needs_three_distinct_skills() {
+        let mk = |name: &str, kw: &str| SkillItem {
+            name: name.to_string(),
+            path: PathBuf::from(name),
+            relative_path: name.to_string(),
+            source: "test".to_string(),
+            description: String::new(),
+            tokens: 10,
+            lines: 1,
+            trigger_keywords: vec![kw.to_string()],
+            is_bloated: false,
+        };
+        let two = vec![mk("a", "design"), mk("b", "design")];
+        assert!(SkillsAuditor::detect_collisions(&two).is_empty());
+
+        let three = vec![mk("a", "design"), mk("b", "design"), mk("c", "design")];
+        assert_eq!(SkillsAuditor::detect_collisions(&three).len(), 1);
     }
 }

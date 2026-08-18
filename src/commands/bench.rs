@@ -8,7 +8,9 @@ pub struct BenchCommand;
 
 impl BenchCommand {
     pub fn execute(iterations: usize, json: bool) -> Result<()> {
-        println!("{}", format!("⚡ Benchmarking subshell spawn times ({} iterations)...", iterations).bold());
+        if !json {
+            println!("{}", format!("⚡ Benchmarking subshell spawn times ({} iterations)...", iterations).bold());
+        }
         let result = ShellBenchmarker::run_benchmark(iterations)?;
 
         if json {

@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OmzPluginReport {
     pub name: String,
-    pub latency_ms: f64,
+    /// None when the plugin could not be located or timed. Absent measurements
+    /// are reported as absent rather than filled in with a placeholder number.
+    pub latency_ms: Option<f64>,
     pub percentage_of_total: f64,
     pub is_slow: bool,
     pub recommendation: Option<String>,
@@ -19,7 +21,8 @@ pub struct OmzPluginReport {
 pub struct SlowInitHook {
     pub command: String,
     pub tool_name: String,
-    pub latency_ms: f64,
+    /// None when the hook was detected in the rc file but not independently timed.
+    pub latency_ms: Option<f64>,
     pub suggestion: String,
 }
 
@@ -87,7 +90,7 @@ impl OmzProfiler {
         // 3. Scan for slow evaluation hooks (nvm, starship, pyenv, brew)
         let slow_hooks = Self::detect_slow_hooks(&zshrc_content);
 
-        let total_omz_overhead_ms: f64 = plugin_reports.iter().map(|p| p.latency_ms).sum();
+        let total_omz_overhead_ms: f64 = plugin_reports.iter().filter_map(|p| p.latency_ms).sum();
 
         let mut recommendations = Vec::new();
 
@@ -96,16 +99,15 @@ impl OmzProfiler {
         }
 
         for plugin in &plugin_reports {
-            if plugin.is_slow {
-                if let Some(rec) = &plugin.recommendation {
+            if plugin.is_slow
+                && let Some(rec) = &plugin.recommendation {
                     recommendations.push(rec.clone());
                 }
-            }
         }
 
         for hook in &slow_hooks {
-            if hook.latency_ms > 40.0 {
-                recommendations.push(hook.suggestion.clone());
+            if hook.latency_ms.is_none_or(|ms| ms > 40.0) {
+                recommendations.push(format!("{}: {}", hook.tool_name, hook.suggestion));
             }
         }
 
@@ -130,8 +132,8 @@ impl OmzProfiler {
         let mut list = Vec::new();
         // Regex for plugins=(git nvm docker ...)
         let re = Regex::new(r"(?ms)plugins=\((.*?)\)").unwrap();
-        if let Some(caps) = re.captures(zshrc) {
-            if let Some(matched) = caps.get(1) {
+        if let Some(caps) = re.captures(zshrc)
+            && let Some(matched) = caps.get(1) {
                 for token in matched.as_str().split_whitespace() {
                     let clean = token.trim();
                     if !clean.is_empty() && !clean.starts_with('#') {
@@ -139,7 +141,6 @@ impl OmzProfiler {
                     }
                 }
             }
-        }
         list
     }
 
@@ -158,7 +159,10 @@ impl OmzProfiler {
             return reports;
         }
 
-        let omz_dir = omz_path.as_deref().unwrap_or(Path::new("/Users/rd/.oh-my-zsh"));
+        // Previously fell back to a hardcoded "/Users/rd/.oh-my-zsh" — the
+        // original author's own home directory, which exists on no other machine.
+        let default_omz = home.join(".oh-my-zsh");
+        let omz_dir = omz_path.as_deref().unwrap_or(&default_omz);
 
         for plugin in plugins {
             // Find plugin path
@@ -173,35 +177,26 @@ impl OmzProfiler {
                 None
             };
 
-            let latency_ms = if let Some(path) = target_path {
-                // Micro-benchmark sourcing this single plugin script in isolated zsh
-                let script = format!(
-                    "zmodload zsh/datetime; start=$EPOCHREALTIME; source '{}'; end=$EPOCHREALTIME; echo $(( (end - start) * 1000 ))",
-                    path.display()
-                );
-                let output = Command::new("zsh")
-                    .args(["-c", &script])
-                    .output();
+            // A plugin that cannot be found is not timed at all. The previous
+            // code substituted invented constants (2.0 / 1.5 / 1.0 ms) that were
+            // then displayed and summed as if they were measurements.
+            let latency_ms = target_path.and_then(|path| Self::time_source(&path));
 
-                if let Ok(out) = output {
-                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    s.parse::<f64>().unwrap_or(2.0)
-                } else {
-                    1.5
-                }
-            } else {
-                1.0
-            };
-
-            let is_slow = latency_ms > 25.0 || plugin == "nvm" || plugin == "pyenv";
-            let rec = if plugin == "nvm" {
-                Some("Lazy-load NVM to defer ~400ms startup penalty until `node`/`npm` is invoked.".to_string())
-            } else if plugin == "git" && latency_ms > 30.0 {
-                Some("Git prompt checks repository status on every subshell. Consider fast-pathing or using git-prompt cache.".to_string())
-            } else if is_slow {
-                Some(format!("Plugin '{}' is taking {:.1}ms. Consider evaluating if it is necessary for all sessions.", plugin, latency_ms))
-            } else {
-                None
+            let is_slow = latency_ms.is_some_and(|ms| ms > 25.0);
+            let rec = match latency_ms {
+                Some(ms) if plugin == "nvm" => Some(format!(
+                    "Plugin 'nvm' costs {:.1}ms per shell. Lazy-load it so the penalty is paid only when node/npm runs.",
+                    ms
+                )),
+                Some(ms) if plugin == "git" && ms > 30.0 => Some(format!(
+                    "The git plugin costs {:.1}ms per shell because it inspects repository status. Consider a cached git prompt.",
+                    ms
+                )),
+                Some(ms) if is_slow => Some(format!(
+                    "Plugin '{}' costs {:.1}ms per shell. Evaluate whether every session needs it.",
+                    plugin, ms
+                )),
+                _ => None,
             };
 
             reports.push(OmzPluginReport {
@@ -213,62 +208,185 @@ impl OmzProfiler {
             });
         }
 
-        let total: f64 = reports.iter().map(|r| r.latency_ms).sum();
+        let total: f64 = reports.iter().filter_map(|r| r.latency_ms).sum();
         for r in &mut reports {
             if total > 0.0 {
-                r.percentage_of_total = (r.latency_ms / total) * 100.0;
+                r.percentage_of_total = (r.latency_ms.unwrap_or(0.0) / total) * 100.0;
             }
         }
 
-        // Sort slowest first
-        reports.sort_by(|a, b| b.latency_ms.partial_cmp(&a.latency_ms).unwrap_or(std::cmp::Ordering::Equal));
+        // Sort slowest first; unmeasured plugins sink to the bottom.
+        reports.sort_by(|a, b| {
+            b.latency_ms
+                .unwrap_or(-1.0)
+                .partial_cmp(&a.latency_ms.unwrap_or(-1.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         reports
     }
 
+    /// Times a single sourced script in an isolated, rc-free shell.
+    fn time_source(path: &Path) -> Option<f64> {
+        let script = format!(
+            "zmodload zsh/datetime; start=$EPOCHREALTIME; source {} >/dev/null 2>&1; end=$EPOCHREALTIME; print $(( (end - start) * 1000 ))",
+            shell_quote(&path.display().to_string())
+        );
+        // -f skips rc files so the measurement isolates this script.
+        let out = Command::new("zsh").args(["-fc", &script]).output().ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        String::from_utf8_lossy(&out.stdout).trim().parse::<f64>().ok()
+    }
+
+    /// Detects known-slow initialization hooks in the rc file.
+    ///
+    /// Each detected hook is timed by running the tool's real init command in an
+    /// isolated shell. Hooks that cannot be timed report `None` — previously they
+    /// were assigned invented constants (nvm 280ms, conda 190ms, everything else
+    /// 35-40ms) which were then rendered as if measured.
     fn detect_slow_hooks(zshrc: &str) -> Vec<SlowInitHook> {
-        let mut hooks = Vec::new();
-
-        let patterns = [
-            ("nvm.sh", "NVM (Node Version Manager)", "nvm.sh", "Lazy-load NVM via `agentprof fix --shell` to save 300-600ms."),
-            ("eval \"$(starship init zsh)\"", "Starship Prompt", "starship", "Starship is fast, but ensure it is bypassed in non-interactive agent runs."),
-            ("eval \"$(pyenv init", "Pyenv (Python Version Manager)", "pyenv", "Lazy-load pyenv to avoid re-evaluating shims on shell startup."),
-            ("eval \"$(rbenv init", "Rbenv (Ruby Version Manager)", "rbenv", "Lazy-load rbenv or defer until ruby is executed."),
-            ("eval \"$(/opt/homebrew/bin/brew shellenv)\"", "Homebrew Shellenv", "brew", "Hardcode Homebrew PATHs instead of executing `eval $(brew shellenv)` on every subshell."),
-            ("conda.sh", "Conda / Anaconda", "conda", "Conda environment initialization adds significant shell overhead. Lazy-load conda."),
-        ];
-
-        for (pattern, name, tool_id, suggestion) in patterns {
-            if zshrc.contains(pattern) {
-                // Benchmark the specific command if possible
-                let latency_ms = if pattern.starts_with("eval") {
-                    let script = format!(
-                        "zmodload zsh/datetime; start=$EPOCHREALTIME; {}; end=$EPOCHREALTIME; echo $(( (end - start) * 1000 ))",
-                        pattern
-                    );
-                    Command::new("zsh")
-                        .args(["-c", &script])
-                        .output()
-                        .ok()
-                        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<f64>().ok())
-                        .unwrap_or(35.0)
-                } else if tool_id == "nvm" {
-                    280.0
-                } else if tool_id == "conda" {
-                    190.0
-                } else {
-                    40.0
-                };
-
-                hooks.push(SlowInitHook {
-                    command: pattern.to_string(),
-                    tool_name: name.to_string(),
-                    latency_ms,
-                    suggestion: suggestion.to_string(),
-                });
-            }
+        struct HookSpec {
+            /// Substring that indicates the hook is present in the rc file.
+            marker: &'static str,
+            name: &'static str,
+            /// A complete, runnable command used to time the hook, if one exists.
+            timing_command: Option<&'static str>,
+            suggestion: &'static str,
         }
 
-        hooks.sort_by(|a, b| b.latency_ms.partial_cmp(&a.latency_ms).unwrap_or(std::cmp::Ordering::Equal));
+        let specs = [
+            HookSpec {
+                marker: "nvm.sh",
+                name: "NVM (Node Version Manager)",
+                timing_command: Some(
+                    "[ -r \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"",
+                ),
+                suggestion: "Lazy-load NVM so its cost is paid only when node/npm is first invoked.",
+            },
+            HookSpec {
+                marker: "starship init zsh",
+                name: "Starship Prompt",
+                timing_command: Some("starship init zsh"),
+                suggestion: "Starship is fast, but ensure it is skipped in non-interactive agent shells.",
+            },
+            HookSpec {
+                marker: "pyenv init",
+                name: "Pyenv (Python Version Manager)",
+                // The old pattern was the truncated string `eval "$(pyenv init`,
+                // which is not a runnable command: it always errored and fell
+                // back to a hardcoded 35ms.
+                timing_command: Some("pyenv init -"),
+                suggestion: "Lazy-load pyenv to avoid re-evaluating shims on every shell start.",
+            },
+            HookSpec {
+                marker: "rbenv init",
+                name: "Rbenv (Ruby Version Manager)",
+                timing_command: Some("rbenv init -"),
+                suggestion: "Lazy-load rbenv or defer it until ruby is executed.",
+            },
+            HookSpec {
+                marker: "brew shellenv",
+                name: "Homebrew Shellenv",
+                timing_command: Some("brew shellenv"),
+                suggestion: "Inline Homebrew's PATH exports instead of shelling out to `brew shellenv` each start.",
+            },
+            HookSpec {
+                marker: "conda.sh",
+                name: "Conda / Anaconda",
+                timing_command: None,
+                suggestion: "Conda initialization adds significant startup cost. Lazy-load it.",
+            },
+            HookSpec {
+                marker: "sdkman-init.sh",
+                name: "SDKMAN",
+                timing_command: None,
+                suggestion: "SDKMAN sources a large init script on every shell. Lazy-load it.",
+            },
+        ];
+
+        let mut hooks = Vec::new();
+        for spec in specs {
+            if !zshrc.contains(spec.marker) {
+                continue;
+            }
+            let latency_ms = spec.timing_command.and_then(Self::time_command);
+            hooks.push(SlowInitHook {
+                command: spec.marker.to_string(),
+                tool_name: spec.name.to_string(),
+                latency_ms,
+                suggestion: spec.suggestion.to_string(),
+            });
+        }
+
+        hooks.sort_by(|a, b| {
+            b.latency_ms
+                .unwrap_or(-1.0)
+                .partial_cmp(&a.latency_ms.unwrap_or(-1.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         hooks
+    }
+
+    /// Times a complete init command in an rc-free shell, returning None if the
+    /// tool is absent or the command fails.
+    fn time_command(command: &str) -> Option<f64> {
+        let script = format!(
+            "zmodload zsh/datetime; start=$EPOCHREALTIME; eval \"$({})\" >/dev/null 2>&1 || exit 1; end=$EPOCHREALTIME; print $(( (end - start) * 1000 ))",
+            command
+        );
+        let out = Command::new("zsh").args(["-fc", &script]).output().ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        String::from_utf8_lossy(&out.stdout).trim().parse::<f64>().ok()
+    }
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r"'\''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_plugins_parses_list() {
+        let rc = "ZSH_THEME=\"robbyrussell\"\nplugins=(git nvm docker)\n";
+        assert_eq!(
+            OmzProfiler::extract_plugins(rc),
+            vec!["git".to_string(), "nvm".to_string(), "docker".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_extract_theme() {
+        assert_eq!(
+            OmzProfiler::extract_theme("ZSH_THEME=\"agnoster\"\n"),
+            Some("agnoster".to_string())
+        );
+        assert_eq!(OmzProfiler::extract_theme("# nothing here\n"), None);
+    }
+
+    #[test]
+    fn test_hooks_absent_from_rc_are_not_reported() {
+        let hooks = OmzProfiler::detect_slow_hooks("# an empty rc file\n");
+        assert!(hooks.is_empty());
+    }
+
+    #[test]
+    fn test_detected_hook_without_tool_reports_no_invented_latency() {
+        // conda has no timing command, so its latency must be absent rather
+        // than a stand-in constant.
+        let hooks = OmzProfiler::detect_slow_hooks("source /opt/conda/etc/profile.d/conda.sh\n");
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].latency_ms, None);
+    }
+
+    #[test]
+    fn test_shell_quote_escapes_single_quotes() {
+        assert_eq!(shell_quote("/a/b"), "'/a/b'");
+        assert!(shell_quote("/it's").contains(r"'\''"));
     }
 }

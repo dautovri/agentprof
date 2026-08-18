@@ -1,3 +1,5 @@
+use tiktoken_rs::{cl100k_base_singleton, o200k_base_singleton};
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenModel {
@@ -20,32 +22,55 @@ impl TokenModel {
     }
 }
 
-use tiktoken_rs::{cl100k_base, o200k_base};
+/// Published API list prices, in USD per 1M tokens.
+///
+/// Fixed instruction/schema payloads are re-sent as *input* on every turn, so
+/// input pricing is what any "cost of context" figure must be based on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Pricing {
+    pub label: &'static str,
+    pub input_per_mtok: f64,
+    pub output_per_mtok: f64,
+}
 
-/// Fast token counter supporting multiple tokenizer backends
+impl Pricing {
+    /// Default reference model for cost estimates (Claude Sonnet class).
+    pub const DEFAULT: Pricing = Pricing {
+        label: "Claude Sonnet (input $3/Mtok)",
+        input_per_mtok: 3.0,
+        output_per_mtok: 15.0,
+    };
+
+    pub fn input_cost(&self, tokens: usize) -> f64 {
+        (tokens as f64 / 1_000_000.0) * self.input_per_mtok
+    }
+
+    pub fn output_cost(&self, tokens: usize) -> f64 {
+        (tokens as f64 / 1_000_000.0) * self.output_per_mtok
+    }
+}
+
+/// Fast token counter supporting multiple tokenizer backends.
+///
+/// Both tokenizers are process-wide singletons: building a `CoreBPE` parses a
+/// ~1.7MB merge table, so re-building it per file made large audits ~100x
+/// slower than the actual counting work.
 pub struct TokenCounter;
 
 impl TokenCounter {
-    /// Counts tokens for a string using standard cl100k_base (Claude 3.5/3.7, GPT-4)
+    /// Counts tokens using cl100k_base (Claude 3.x/4.x approximation, GPT-4).
     pub fn count_cl100k(text: &str) -> usize {
-        match cl100k_base() {
-            Ok(bpe) => bpe.encode_ordinary(text).len(),
-            Err(_) => text.split_whitespace().count() * 4 / 3, // fallback heuristic
-        }
+        cl100k_base_singleton().lock().encode_ordinary(text).len()
     }
 
-    /// Counts tokens using o200k_base (GPT-4o, o1, o3)
+    /// Counts tokens using o200k_base (GPT-4o, o1, o3).
     pub fn count_o200k(text: &str) -> usize {
-        match o200k_base() {
-            Ok(bpe) => bpe.encode_ordinary(text).len(),
-            Err(_) => Self::count_cl100k(text),
-        }
+        o200k_base_singleton().lock().encode_ordinary(text).len()
     }
 
-    /// Estimate cost per 100 turns in USD at Opus / Sonnet / GPT-4o rates
-    /// Assumes ~$0.015 per 1k input tokens average
+    /// Cost in USD of re-sending `tokens` of fixed context as input for 100 turns.
     pub fn estimate_cost_per_100_turns(tokens: usize) -> f64 {
-        (tokens as f64 / 1_000.0) * 0.015 * 100.0
+        Pricing::DEFAULT.input_cost(tokens) * 100.0
     }
 
     /// Calculates token share against a target context window (e.g. 128,000 or 200,000)
@@ -72,5 +97,30 @@ mod tests {
     fn test_context_percentage() {
         let pct = TokenCounter::context_percentage(2000, 200_000);
         assert!((pct - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_empty_text_counts_zero() {
+        assert_eq!(TokenCounter::count_cl100k(""), 0);
+        assert_eq!(TokenCounter::count_o200k(""), 0);
+    }
+
+    #[test]
+    fn test_zero_window_does_not_divide_by_zero() {
+        assert_eq!(TokenCounter::context_percentage(1000, 0), 0.0);
+    }
+
+    #[test]
+    fn test_cost_uses_input_pricing() {
+        // 10k fixed tokens re-sent 100 times = 1M input tokens = one input-Mtok charge.
+        let cost = TokenCounter::estimate_cost_per_100_turns(10_000);
+        assert!((cost - Pricing::DEFAULT.input_per_mtok).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_tokenizer_is_reused_and_stable() {
+        let a = TokenCounter::count_cl100k("agentprof profiles agent workspaces");
+        let b = TokenCounter::count_cl100k("agentprof profiles agent workspaces");
+        assert_eq!(a, b);
     }
 }

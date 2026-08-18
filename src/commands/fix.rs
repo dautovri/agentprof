@@ -1,50 +1,98 @@
 use std::path::Path;
+
 use anyhow::Result;
 use owo_colors::OwoColorize;
 
-use crate::core::fixer::FixerEngine;
+use crate::core::fixer::{FixAction, FixOutcome, FixerEngine};
 
 pub struct FixCommand;
 
 impl FixCommand {
-    pub fn execute(target_path: &Path, shell: bool, ignore: bool, zcompile: bool, all: bool) -> Result<()> {
-        let run_all = all || (!shell && !ignore && !zcompile);
+    pub fn execute(
+        target_path: &Path,
+        shell: bool,
+        ignore: bool,
+        zcompile: bool,
+        all: bool,
+        dry_run: bool,
+        json: bool,
+    ) -> Result<()> {
+        // `--all` opts into the shell changes; a bare `agentprof fix` only
+        // touches files inside the workspace.
+        let run_shell = shell || all;
+        let run_zcompile = zcompile || all;
+        let run_ignore = ignore || all || (!shell && !zcompile);
 
-        println!("{}", "🛠️ Applying optimizations...".bold().cyan());
+        if !json {
+            let header = if dry_run {
+                "🔍 Previewing optimizations (no files will be written)..."
+            } else {
+                "🛠️ Applying optimizations..."
+            };
+            println!("{}", header.bold().cyan());
+        }
 
-        if run_all || ignore {
-            let files = FixerEngine::generate_ignore_files(target_path)?;
-            println!("  ✅ Generated agent ignore files:");
-            for f in files {
-                println!("     • {}", f.display().green());
+        let mut actions: Vec<FixAction> = Vec::new();
+
+        if run_ignore {
+            actions.extend(FixerEngine::generate_ignore_files(target_path, dry_run)?);
+        }
+        if run_shell {
+            match FixerEngine::inject_shell_fast_path(dry_run) {
+                Ok(action) => actions.push(action),
+                Err(e) if !json => println!("  ⚠️ Shell fast-path skipped: {}", e),
+                Err(_) => {}
+            }
+        }
+        if run_zcompile {
+            match FixerEngine::compile_zshrc_bytecode(dry_run) {
+                Ok(action) => actions.push(action),
+                Err(e) if !json => println!("  ⚠️ zcompile skipped: {}", e),
+                Err(_) => {}
             }
         }
 
-        if run_all || shell {
-            match FixerEngine::inject_shell_fast_path() {
-                Ok((path, modified)) => {
-                    if modified {
-                        println!("  ✅ Injected agent fast-path bypass into {}", path.display().green());
-                        println!("     (Backup created at ~/.zshrc.agentprof.bak)");
-                    } else {
-                        println!("  ℹ️  Fast-path bypass is already present in {}", path.display().yellow());
-                    }
-                }
-                Err(e) => {
-                    println!("  ⚠️ Could not update ~/.zshrc: {}", e);
-                }
+        if json {
+            println!("{}", serde_json::to_string_pretty(&actions)?);
+            return Ok(());
+        }
+
+        for action in &actions {
+            let (icon, label) = match action.outcome {
+                FixOutcome::Created => ("✅", "created"),
+                FixOutcome::Updated => ("✅", "updated"),
+                FixOutcome::AlreadyApplied => ("ℹ️ ", "already applied"),
+                FixOutcome::WouldChange => ("📝", "would change"),
+                FixOutcome::Skipped => ("⏭️ ", "skipped"),
+            };
+            println!(
+                "  {} {} [{}] — {}",
+                icon,
+                action.target.display().green(),
+                label,
+                action.detail.dimmed()
+            );
+            if let Some(backup) = &action.backup {
+                println!("       backup: {}", backup.display().to_string().dimmed());
             }
         }
 
-        if run_all || zcompile {
-            match FixerEngine::compile_zshrc_bytecode() {
-                Ok(true) => println!("  ✅ Compiled ~/.zshrc to bytecode via `zcompile`"),
-                Ok(false) => println!("  ℹ️  `zcompile` step skipped (file not found or unchanged)"),
-                Err(e) => println!("  ⚠️ `zcompile` failed: {}", e),
-            }
+        if run_shell && !dry_run && actions.iter().any(|a| a.outcome == FixOutcome::Created) {
+            println!(
+                "\n{}",
+                "Note: the shell guard is opt-in. It only activates when AGENTPROF_FAST_PATH=1 is set (as `agentprof wrap` does)."
+                    .dimmed()
+            );
         }
 
-        println!("\n{}", "🎉 Optimization complete! Re-run `agentprof scan` to verify improvements.".green().bold());
+        println!(
+            "\n{}",
+            if dry_run {
+                "Preview complete. Re-run without --dry-run to apply.".bold().to_string()
+            } else {
+                "🎉 Done. Re-run `agentprof scan` to verify improvements.".green().bold().to_string()
+            }
+        );
         Ok(())
     }
 }

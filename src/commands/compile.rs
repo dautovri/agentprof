@@ -9,7 +9,9 @@ pub struct CompileCommand;
 
 impl CompileCommand {
     pub fn execute(workspace_root: &Path, json: bool) -> Result<()> {
-        println!("{}", "⚡ Compiling monolithic rules into JIT modular instructions...".bold());
+        if !json {
+            println!("{}", "⚡ Compiling monolithic rules into JIT modular instructions...".bold());
+        }
 
         let result = JitRuleCompiler::compile_monolithic_rules(workspace_root)?;
 
@@ -23,8 +25,13 @@ impl CompileCommand {
         println!("  • Output Dir:    {}", result.output_directory.display().bold().green());
         println!("  • Modules Built: {}", result.total_modules_created.bold());
         println!(
-            "  • Token Savings: {}",
-            format!("{:.1}% average context reduction per turn", result.token_savings_percentage).bold().green()
+            "  • Always Loaded: {} tokens",
+            Formatters::format_tokens(result.always_loaded_tokens).yellow()
+        );
+        println!(
+            "  • Conditional:   {} tokens ({:.1}% of the file becomes load-on-demand)",
+            Formatters::format_tokens(result.conditional_tokens).green(),
+            result.deferrable_percentage
         );
 
         println!("\n{}", "Compiled Modules:".bold());

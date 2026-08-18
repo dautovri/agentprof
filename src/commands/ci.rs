@@ -1,17 +1,41 @@
 use std::path::Path;
+
 use anyhow::Result;
 use owo_colors::OwoColorize;
 
-use crate::core::ci_generator::CiGenerator;
+use crate::core::ci_generator::{CiGenerator, CiWriteOutcome};
 
 pub struct CiCommand;
 
 impl CiCommand {
-    pub fn execute(workspace_root: &Path) -> Result<()> {
-        println!("{}", "🤖 Generating CI/CD Context Budget GitHub Action...".bold());
-        let action_path = CiGenerator::generate_github_action(workspace_root)?;
-        println!("  ✅ Created: {}", action_path.display().green().bold());
-        println!("     (Runs context & token size checks on pull requests automatically)");
+    pub fn execute(workspace_root: &Path, min_score: usize, force: bool) -> Result<()> {
+        println!("{}", "🤖 Generating CI/CD context budget gate...".bold());
+        let result = CiGenerator::generate_github_action(workspace_root, min_score, force)?;
+
+        match result.outcome {
+            CiWriteOutcome::Created => {
+                println!("  ✅ Created: {}", result.path.display().green().bold());
+            }
+            CiWriteOutcome::Overwritten => {
+                println!("  ✅ Replaced: {}", result.path.display().green().bold());
+                if let Some(b) = &result.backup {
+                    println!("     Backup: {}", b.display().to_string().dimmed());
+                }
+            }
+            CiWriteOutcome::Preserved => {
+                println!(
+                    "  ℹ️  {} already exists — left untouched.",
+                    result.path.display().yellow()
+                );
+                println!("     Re-run with {} to replace it (a backup is kept).", "--force".bold());
+                return Ok(());
+            }
+        }
+
+        println!(
+            "     The workflow fails the build when the health score drops below {}.",
+            min_score.to_string().bold()
+        );
         println!();
         Ok(())
     }
