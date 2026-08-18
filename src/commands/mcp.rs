@@ -1,5 +1,8 @@
 use std::path::Path;
+use std::time::Duration;
+
 use anyhow::Result;
+use owo_colors::OwoColorize;
 
 use crate::core::mcp_profiler::McpProfiler;
 use crate::ui::tables::TableRenderer;
@@ -7,8 +10,20 @@ use crate::ui::tables::TableRenderer;
 pub struct McpCommand;
 
 impl McpCommand {
-    pub fn execute(workspace_root: &Path, json: bool) -> Result<()> {
-        let report = McpProfiler::profile(workspace_root)?;
+    pub fn execute(workspace_root: &Path, probe: bool, probe_timeout: u64, json: bool) -> Result<()> {
+        if probe && !json {
+            println!(
+                "{}",
+                "🔌 Probing MCP servers (starting each configured server to read its tool list)..."
+                    .bold()
+            );
+        }
+
+        let report = McpProfiler::profile_with_options(
+            workspace_root,
+            probe,
+            Duration::from_secs(probe_timeout.max(1)),
+        )?;
 
         if json {
             println!("{}", serde_json::to_string_pretty(&report)?);

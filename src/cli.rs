@@ -5,7 +5,7 @@ use clap_complete::Shell;
 #[derive(Parser, Debug)]
 #[command(
     name = "agentprof",
-    version = "0.2.0",
+    version,
     about = "AI Agent Workspace Optimizer & Shell Latency Profiler",
     long_about = "Full-suite optimizer for AI coding agents (Claude, OpenCode, Cursor, Grok): profiles Oh My Zsh plugins, subshell latency, MCP schemas, skills collisions, and rule bloat."
 )]
@@ -13,9 +13,12 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Target directory to scan (defaults to current directory)
-    #[arg(short, long, global = true, default_value = ".")]
-    pub path: PathBuf,
+    /// Target directory (defaults to the current directory)
+    // Uses a distinct argument id: a subcommand positional also named `path`
+    // shadowed the global one, which made `--path` silently unusable on every
+    // subcommand.
+    #[arg(short, long = "path", id = "global_path", global = true, value_name = "DIR")]
+    pub path: Option<PathBuf>,
 
     /// Output results as JSON
     #[arg(long, global = true)]
@@ -27,15 +30,13 @@ pub enum Commands {
     /// Full workspace, shell, MCP, and skills audit (default)
     Scan {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
 
     /// Launch full-screen interactive Terminal UI dashboard
     Tui {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
 
     /// Generate shell auto-completions (zsh, bash, fish, powershell)
@@ -57,8 +58,7 @@ pub enum Commands {
     /// Lint instruction files for contradictions, vague rules, and anti-patterns
     Lint {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
 
     /// Wrap and accelerate an agent session with subshell fast-path injection
@@ -71,43 +71,63 @@ pub enum Commands {
     /// Generate an Agent Workspace Health Score (0-100) and Markdown report
     Report {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
 
         /// Output GitHub-flavored Markdown
         #[arg(short, long)]
         markdown: bool,
+
+        /// Exit with code 1 if the health score is below this value (for CI gating)
+        #[arg(long, value_name = "SCORE")]
+        fail_under: Option<usize>,
     },
 
     /// Profile specific AI agent platforms (OpenCode, Claude Code, Grok)
     Agent {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
 
     /// Profile MCP (Model Context Protocol) server tool schemas & token load
     Mcp {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
+
+        /// Start each server and read its real tool list over the MCP protocol.
+        /// This executes the commands in your MCP config.
+        #[arg(long)]
+        probe: bool,
+
+        /// Per-server probe timeout in seconds
+        #[arg(long, default_value_t = 10)]
+        probe_timeout: u64,
     },
 
     /// Audit installed AI agent skills, token weights, and trigger keyword collisions
     Skills {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
 
     /// Inspect agent session history, lifetime costs, and loop thrashing
-    History,
+    History {
+        /// Number of most-recent session transcripts to analyze (0 = all)
+        #[arg(short, long, default_value_t = crate::core::session_history::DEFAULT_SESSION_LIMIT)]
+        sessions: usize,
+    },
 
     /// Generate a GitHub Action workflow to enforce context budgets in CI/CD
     Ci {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
+
+        /// Minimum health score the generated workflow will require
+        #[arg(long, default_value_t = 70)]
+        min_score: usize,
+
+        /// Replace an existing workflow file (a backup is kept)
+        #[arg(long)]
+        force: bool,
     },
 
     /// Profile Oh My Zsh plugins and shell initialization hooks
@@ -123,15 +143,13 @@ pub enum Commands {
     /// Audit workspace instruction files and token expenditure
     Context {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
 
     /// Apply automated optimizations (.claudeignore, fast-path bypass guard)
     Fix {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
 
         /// Apply shell fast-path bypass in ~/.zshrc
         #[arg(long)]
@@ -145,15 +163,18 @@ pub enum Commands {
         #[arg(long)]
         zcompile: bool,
 
-        /// Apply all optimizations
+        /// Apply all optimizations, including changes to your shell rc file
         #[arg(short, long)]
         all: bool,
+
+        /// Show what would change without writing anything
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Compile monolithic instruction files into modular JIT rules
     Compile {
         /// Target directory
-        #[arg(default_value = ".")]
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
 }

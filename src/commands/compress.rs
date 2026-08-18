@@ -12,7 +12,7 @@ impl CompressCommand {
         println!("{}", format!("🗜️ Compressing instruction file '{}'...", file_path.display()).bold());
 
         let report = RuleCompressor::compress_file(file_path)?;
-        let saved_path = RuleCompressor::save_compressed_file(file_path, overwrite)?;
+        let saved_path = RuleCompressor::save_report(&report, overwrite)?;
 
         println!("  • Original Tokens:   {}", Formatters::format_tokens(report.original_tokens).yellow());
         println!("  • Compressed Tokens: {}", Formatters::format_tokens(report.compressed_tokens).green().bold());

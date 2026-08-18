@@ -1,7 +1,7 @@
 # agentprof ⚡🤖
 
-> **The AI Agent Workspace Optimizer & Shell Latency Profiler**  
-> *A high-performance Rust CLI & TUI that eliminates subshell startup latency, profiles Oh My Zsh plugins, audits AI context bloat (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`), inspects MCP tool schemas, resolves skill collisions, and accelerates AI coding agents.*
+> **The AI Agent Workspace Profiler**  
+> *A Rust CLI & TUI that measures what slows AI coding agents down: subshell startup latency, MCP tool-schema token load, instruction bloat (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`), and skill trigger collisions. Every figure it reports is measured — never guessed.*
 
 [![Website](https://img.shields.io/badge/Website-dautovri.github.io%2Fagentprof-blue?logo=safari)](https://dautovri.github.io/agentprof/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -29,18 +29,18 @@ When using AI coding agents (**Claude Code**, **Cursor**, **OpenCode**, **Grok**
 ## ✨ Features
 
 - 🖥️ **Interactive Terminal UI (`agentprof tui`)** — Full-screen `ratatui` dashboard with tabbed views for Context, MCP, Skills, Subshell, and History.
-- 🔌 **MCP Tool Schema Profiler (`agentprof mcp`)** — Measures exact token footprint of all connected Model Context Protocol tool definitions.
+- 🔌 **MCP Tool Schema Profiler (`agentprof mcp --probe`)** — Performs a real MCP handshake (`initialize` → `tools/list`) against each configured server and counts the exact tokens its tool definitions add to every prompt. Results are cached; servers that have never been probed report `—` rather than a guess.
 - 🎯 **Agent Skills Auditor (`agentprof skills`)** — Audits installed skills, calculates token weights, and detects trigger keyword collisions.
 - 🔍 **Instruction Linter & Contradiction Detector (`agentprof lint`)** — Finds conflicting instructions (e.g. `ObservableObject` vs `@Observable`, OS target mismatches).
 - 🗜️ **Rule Compressor (`agentprof compress <file>`)** — Strips conversational filler and compresses rule files for maximum token density.
-- 🏃 **Agent Execution Wrapper & Flight Recorder (`agentprof wrap <cmd>`)** — Injects subshell fast-path into live agent sessions and prints a post-flight summary card.
-- 📝 **Workspace Health Score & PR Report (`agentprof report --markdown`)** — Generates a 0–100 health audit table for PR comments and badges.
+- 🏃 **Agent Execution Wrapper (`agentprof wrap <cmd>`)** — Runs an agent with `AGENTPROF_FAST_PATH=1` exported, propagates its exit code, and prints a post-flight summary.
+- 📝 **Workspace Health Score & PR Report (`agentprof report`)** — A 0–100 audit across five equally weighted categories (subshell latency, context budget, hygiene, secrets, MCP load). `--markdown` emits a PR comment; `--fail-under <score>` exits non-zero so CI can gate on it.
 - 🐚 **Oh My Zsh & Shell Profiler (`agentprof omz`)** — Measures startup overhead of every loaded plugin and slow `eval` hook.
 - ⚡ **Subshell Latency Benchmark (`agentprof bench`)** — Measures interactive vs non-interactive latency tax.
 - 📁 **Workspace Ignore & Security Guard (`agentprof scan`)** — Flags unignored build caches and exposed secret files (`.env`, `.pem`, `credentials.json`).
-- 🛠️ **1-Click Auto Optimizer (`agentprof fix --all`)** — Injects non-interactive fast-path bypass guards into `~/.zshrc` and generates `.claudeignore`.
+- 🛠️ **Auto Optimizer (`agentprof fix`)** — Merges ignore patterns into `.claudeignore` / `.cursorignore` without discarding your existing rules (backups kept), and can install an **opt-in** shell fast-path guard. `--dry-run` previews every change.
 - 📦 **JIT Rule Compiler (`agentprof compile`)** — Breaks monolithic rule files into modular, context-routed instructions.
-- 🤖 **CI/CD Context Budget Gate (`agentprof ci`)** — Generates a GitHub Actions workflow (`.github/workflows/agentprof-audit.yml`).
+- 🤖 **CI/CD Context Budget Gate (`agentprof ci`)** — Generates a GitHub Actions workflow that actually fails the build when the health score drops below `--min-score` or a secret becomes reachable by agent tools. An existing workflow is never overwritten without `--force`.
 
 ---
 
@@ -75,18 +75,40 @@ cargo build --release
 | `agentprof lint` | Checks workspace instruction files for contradictions & anti-patterns. |
 | `agentprof compress <file>` | Compresses verbose instruction files into dense rule sheets. |
 | `agentprof wrap "<cmd>"` | Wraps and accelerates an AI agent session (`agentprof wrap claude`). |
-| `agentprof report --markdown` | Generates a 0–100 Health Score Markdown summary for PRs. |
+| `agentprof report` | 0–100 health score. `--markdown` for PRs, `--fail-under N` to gate CI. |
 | `agentprof agent` | Profiles **OpenCode**, **Claude Code**, and **Grok** environments. |
-| `agentprof mcp` | Profiles active MCP server tool schemas and token load. |
+| `agentprof mcp` | Shows configured MCP servers. Add `--probe` to measure real tool schemas. |
 | `agentprof skills` | Audits installed agent skills and detects trigger collisions. |
-| `agentprof history` | Lifetime AI token usage, session costs, and loop thrashing diagnostics. |
+| `agentprof history` | Real token usage and cost from Claude Code transcripts. `--sessions N` to widen. |
 | `agentprof omz` | Profiles Oh My Zsh plugins and slow shell startup hooks. |
 | `agentprof bench` | Benchmarks interactive vs non-interactive subshell latency. |
-| `agentprof fix --all` | Injects fast-path bypass into `~/.zshrc` and generates `.claudeignore`. |
+| `agentprof fix` | Merges agent ignore rules. `--shell` for the opt-in guard, `--dry-run` to preview. |
 | `agentprof compile` | Compiles monolithic rule files into modular JIT instructions. |
 | `agentprof ci` | Generates a GitHub Actions workflow for PR context budget checks. |
 
 ---
+
+## 🔬 How numbers are produced
+
+`agentprof` distinguishes **measured** values from **estimates**, and reports nothing it has not actually observed:
+
+| Figure | Source |
+| :--- | :--- |
+| MCP schema tokens | A live `tools/list` handshake with the server (`--probe`), tokenized with `cl100k_base`. Unprobed servers show `—`. |
+| Instruction/skill tokens | `cl100k_base` tokenization of the real file contents. |
+| Shell latency | Median of N real shell spawns, after warm-up runs are discarded. |
+| Session cost | The `usage` blocks in Claude Code transcripts, priced with cache-aware input/output rates. |
+| Plugin & hook latency | Timed by sourcing the script in an isolated (`zsh -f`) shell. Untimed hooks report "not measured". |
+
+Cost estimates use Claude Sonnet list pricing ($3/Mtok input, $15/Mtok output); cache writes bill at 1.25× and cache reads at 0.1× the input rate.
+
+## 🧪 Development
+
+```bash
+cargo build --release
+cargo test          # 90 unit + integration tests
+cargo clippy --all-targets
+```
 
 ## 📄 License
 

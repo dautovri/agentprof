@@ -8,7 +8,9 @@ pub struct OmzCommand;
 
 impl OmzCommand {
     pub fn execute(json: bool) -> Result<()> {
-        println!("{}", "🐚 Profiling Oh My Zsh and Shell plugins...".bold());
+        if !json {
+            println!("{}", "🐚 Profiling Oh My Zsh and Shell plugins...".bold());
+        }
         let report = OmzProfiler::profile()?;
 
         if json {

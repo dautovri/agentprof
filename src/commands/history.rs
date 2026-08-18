@@ -6,8 +6,9 @@ use crate::ui::tables::TableRenderer;
 pub struct HistoryCommand;
 
 impl HistoryCommand {
-    pub fn execute(json: bool) -> Result<()> {
-        let report = SessionHistoryAnalyzer::analyze()?;
+    pub fn execute(sessions: usize, json: bool) -> Result<()> {
+        let limit = if sessions == 0 { usize::MAX } else { sessions };
+        let report = SessionHistoryAnalyzer::analyze_with_limit(limit)?;
 
         if json {
             println!("{}", serde_json::to_string_pretty(&report)?);
