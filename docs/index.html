@@ -13,7 +13,7 @@
 
   <!-- Open Graph / Social -->
   <meta property="og:title" content="agentprof — AI Agent Workspace Optimizer">
-  <meta property="og:description" content="Measure subshell latency, MCP tool-schema tokens, instruction bloat, and skill collisions. Every figure measured, never guessed.">
+  <meta property="og:description" content="Find the secrets your AI coding agent can read, the instructions and MCP tools it loads every turn, and the shell overhead it pays per command. Every figure measured, never guessed.">
   <meta property="og:url" content="https://dautovri.github.io/agentprof/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="agentprof">
@@ -22,7 +22,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="agentprof — AI Agent Workspace Optimizer">
-  <meta name="twitter:description" content="Measure subshell latency, MCP tool-schema tokens, instruction bloat, and skill collisions. Every figure measured, never guessed.">
+  <meta name="twitter:description" content="Find the secrets your AI coding agent can read, the instructions and MCP tools it loads every turn, and the shell overhead it pays per command. Every figure measured, never guessed.">
 
   <!-- Schema.org JSON-LD -->
   <script type="application/ld+json">
@@ -647,7 +647,7 @@
   <nav>
     <div class="container nav-inner">
       <a href="#" class="nav-brand">
-        ⚡ agentprof <span class="nav-version">v0.2.0</span>
+        ⚡ agentprof <span class="nav-version">v0.3.0</span>
       </a>
       <div class="nav-actions">
         <a href="#features" class="nav-link">Features</a>
@@ -666,11 +666,11 @@
     <div class="container">
       <div class="badge-hero">
         <span class="pulse-dot"></span>
-        <span>Built for Claude Code, OpenCode, Cursor & Grok</span>
+        <span>For Claude Code, Cursor, Codex, OpenCode, Gemini CLI & Copilot</span>
       </div>
-      <h1>Find What Slows Your<br>AI Coding Agent Down.</h1>
+      <h1>See What Your AI Agent<br>Loads and Runs.</h1>
       <p class="hero-desc">
-        A Rust CLI &amp; TUI that measures the hidden cost of every agent turn — subshell startup latency, MCP tool-schema tokens, instruction bloat, and skill collisions. Every number is measured, never guessed.
+        A Rust CLI &amp; TUI that shows what your coding agent loads and runs — secrets it can read, always-loaded instructions, MCP tools per agent, skills and shell overhead — and fixes what it can. Every number is measured, never guessed.
       </p>
 
       <!-- 3-Way Install Widget -->
@@ -683,39 +683,39 @@
         <div class="install-box">
           <div class="install-cmd">
             <span class="p">$</span>
-            <span id="install-text">brew tap dautovri/tap && brew install agentprof</span>
+            <span id="install-text">brew install dautovri/tap/agentprof</span>
           </div>
           <button class="btn-copy" onclick="copyInstall()">Copy</button>
         </div>
       </div>
 
-      <!-- Measured overhead strip: each pair is a real measurement, not an automatic saving -->
+      <!-- Each card is a real measurement; the source is named in its caption -->
       <div class="comparison-strip" id="benchmarks">
         <div class="comp-card">
-          <div class="comp-label">Subshell Tool Latency</div>
+          <div class="comp-label">Secret Files Claude Code Can Read</div>
+          <div class="comp-row">
+            <span class="comp-before">2 readable</span>
+            <span class="comp-after">0</span>
+          </div>
+          <div class="comp-saving">⚡ Demo workspace; <code>agentprof fix</code> writes Read deny rules — Claude Code ignores .claudeignore</div>
+        </div>
+
+        <div class="comp-card">
+          <div class="comp-label">Interactive Login vs Bare Spawn</div>
           <div class="comp-row">
             <span class="comp-before">617.6ms</span>
             <span class="comp-after">5.3ms</span>
           </div>
-          <div class="comp-saving">⚡ Interactive vs non-interactive, measured here</div>
+          <div class="comp-saving">⚡ One zsh + Oh My Zsh setup; what agents pay per command varies — <code>agentprof bench</code> measures yours</div>
         </div>
 
         <div class="comp-card">
-          <div class="comp-label">50 Tool Calls Turnaround</div>
-          <div class="comp-row">
-            <span class="comp-before">+30.8s wait</span>
-            <span class="comp-after">0.26s</span>
-          </div>
-          <div class="comp-saving">⚡ What 50 calls cost; recoverable with an opt-in guard</div>
-        </div>
-
-        <div class="comp-card">
-          <div class="comp-label">MCP Schema Load Per Turn</div>
+          <div class="comp-label">MCP Tool Definitions</div>
           <div class="comp-row">
             <span class="comp-before">33,869 tok</span>
             <span class="comp-after">12,153 tok</span>
           </div>
-          <div class="comp-saving">⚡ Measured; after disabling the 2 heaviest servers</div>
+          <div class="comp-saving">⚡ Measured; after disabling the 2 heaviest servers (per turn for agents that load them up front)</div>
         </div>
       </div>
 
@@ -732,7 +732,7 @@
               <button class="term-tab-btn active" onclick="switchTerm('scan')">agentprof scan</button>
               <button class="term-tab-btn" onclick="switchTerm('mcp')">agentprof mcp</button>
               <button class="term-tab-btn" onclick="switchTerm('skills')">agentprof skills</button>
-              <button class="term-tab-btn" onclick="switchTerm('omz')">agentprof omz</button>
+              <button class="term-tab-btn" onclick="switchTerm('bench')">agentprof bench</button>
               <button class="term-tab-btn" onclick="switchTerm('lint')">agentprof lint</button>
             </div>
           </div>
@@ -756,13 +756,13 @@
         <!-- Feature 1 (Span 2) -->
         <div class="bento-card col-2">
           <div>
-            <div class="bento-icon">⚡</div>
-            <h3>Subshell Latency Accelerator</h3>
-            <p>Every AI agent tool execution forks a subshell. If your <code>~/.zshrc</code> runs slow version managers (nvm, pyenv) or git status prompts, 50 tool executions waste over 30 seconds. <code>agentprof</code> injects an idempotent, zero-overhead bypass header so agent subshells run in under 6ms.</p>
+            <div class="bento-icon">🔐</div>
+            <h3>Secrets Your Agent Can Read</h3>
+            <p>Claude Code does not read <code>.claudeignore</code>; only <code>Read(...)</code> deny rules in <code>.claude/settings.json</code> keep files away from it. <code>agentprof</code> checks every <code>.env</code>, key and credential file against the deny rules actually in effect, and <code>agentprof fix</code> merges the missing rules in — keeping your settings and a backup.</p>
           </div>
           <div class="bento-metric">
-            <span>Subshell Init Benchmark</span>
-            <span class="t-green">617ms ➔ 5.3ms (99.1% saved)</span>
+            <span>Protection check</span>
+            <span class="t-green">managed · user · project · local settings</span>
           </div>
         </div>
 
@@ -771,7 +771,7 @@
           <div>
             <div class="bento-icon">🔌</div>
             <h3>MCP Tool Schema Profiler</h3>
-            <p>Connected Model Context Protocol servers inject extensive JSON tool definitions into your prompt on every turn. <code>agentprof mcp</code> profiles schema token overhead and flags heavyweight tools before they blow through your budget.</p>
+            <p>Performs a real <code>initialize</code> → <code>tools/list</code> handshake with every configured server and reports the load per agent — full definitions where they are loaded up front, tool names only where Claude Code defers them. Servers defined inside a repository are only started with <code>--trust-workspace</code>.</p>
           </div>
           <div class="bento-metric">
             <span>Schema Load</span>
@@ -784,7 +784,7 @@
           <div>
             <div class="bento-icon">🎯</div>
             <h3>Skills & Trigger Collision Auditor</h3>
-            <p>Audits all installed skills across Claude Code, OpenCode, and local worktrees. Identifies keyword overlaps where multiple skills compete for identical intents (e.g. <code>review</code>, <code>qa</code>, <code>design</code>) and cause hallucination loops.</p>
+            <p>Agents keep every skill's name and description in context and load <code>SKILL.md</code> only when it runs. <code>agentprof skills</code> reports both, flags oversized skills and missing descriptions, and finds skills competing for the same intent (<code>review</code>, <code>qa</code>, <code>design</code>).</p>
           </div>
           <div class="bento-metric">
             <span>Collision Guard</span>
@@ -797,7 +797,7 @@
           <div>
             <div class="bento-icon">🔍</div>
             <h3>Instruction Linter & Contradiction Detector</h3>
-            <p>Detects conflicting rules across <code>AGENTS.md</code>, <code>CLAUDE.md</code>, and <code>.cursorrules</code> (e.g. <code>ObservableObject</code> vs <code>@Observable</code>, deployment target mismatches). Compresses bloated rule files and compiles them into context-routed JIT instructions.</p>
+            <p>Finds instruction files that prescribe conflicting conventions (e.g. <code>ObservableObject</code> vs <code>@Observable</code>, npm vs pnpm) while ignoring rejections like "instead of". <code>agentprof compile</code> moves language-specific sections into path-scoped rules — <code>.claude/rules</code>, <code>.cursor/rules</code>, Copilot instructions — so they load only when relevant.</p>
           </div>
           <div class="bento-metric">
             <span>Rule Conflict Linter</span>
@@ -809,12 +809,12 @@
         <div class="bento-card col-3">
           <div>
             <div class="bento-icon">🛡️</div>
-            <h3>Workspace Hygiene & Security Shield</h3>
-            <p>Prevents AI agent search and grep tools from indexing massive unignored directories (<code>.build/</code>, <code>DerivedData/</code>, <code>node_modules/</code>, <code>target/</code>) or accidentally ingesting sensitive credential files (<code>.env</code>, <code>*.pem</code>, <code>credentials.json</code>). Merges patterns into <code>.claudeignore</code> and <code>.cursorignore</code> without discarding existing rules, keeping a backup.</p>
+            <h3>CI Gate & GitHub Action</h3>
+            <p><code>uses: dautovri/agentprof@v0.3.0</code> installs a checksum-verified binary, writes the health report to the job summary, and fails the pull request when the score drops, a secret becomes readable by Claude Code, or instruction files contradict each other. Scores use only repository contents, so every runner agrees. SARIF output feeds GitHub code scanning.</p>
           </div>
           <div class="bento-metric">
-            <span>1-Click Guard</span>
-            <span class="t-green">agentprof fix --dry-run (preview) → fix --ignore (merges, never overwrites)</span>
+            <span>One step</span>
+            <span class="t-green">uses: dautovri/agentprof@v0.3.0 · fail-under: 80</span>
           </div>
         </div>
       </div>
@@ -866,7 +866,7 @@
             <div class="calc-stat-number" id="res-cost">$165.00</div>
           </div>
           <div style="font-size:13px; color:var(--text-dim);">
-            Assumes a 600ms subshell tax, 2,500 schema tokens per MCP server, and Claude Sonnet input pricing ($3/Mtok). Run <code>agentprof bench</code> and <code>agentprof mcp --probe</code> for your own numbers.
+            Assumes 100ms of shell overhead per command, 2,500 tokens of tool definitions per MCP server loaded up front, and Claude Sonnet 5 cache-read pricing ($0.20/Mtok, since agents cache these). Run <code>agentprof bench</code> and <code>agentprof mcp --probe</code> for your own numbers.
           </div>
         </div>
       </div>
@@ -888,8 +888,8 @@
   <!-- Scripts -->
   <script>
     const installSnippets = {
-      brew: 'brew tap dautovri/tap && brew install agentprof',
-      cargo: 'cargo install --git https://github.com/dautovri/agentprof.git',
+      brew: 'brew install dautovri/tap/agentprof',
+      cargo: 'cargo install --git https://github.com/dautovri/agentprof --locked',
       curl: 'curl -fsSL https://raw.githubusercontent.com/dautovri/agentprof/main/install.sh | bash'
     };
 
@@ -907,25 +907,50 @@
       setTimeout(() => btn.innerText = 'Copy', 2000);
     }
 
+    // Generated from scripts/demo-workspace.sh (except mcp, measured on the
+    // author's machine). Regenerate them when the output format changes.
     const termViews = {
-      scan: `<span class="t-cyan">⚡ Running agentprof full workspace & shell scan...</span><br><br>
-<span class="t-cyan">🤖 AI Agent Context & Instruction Budget</span><br>
-<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-• Instruction Overhead: <span class="t-yellow">12,333 tokens</span> across 18 files (9.6% of 128k context)<br>
-• Estimated Turn Cost:  <span class="t-green">$3.70 per 100 prompt turns</span><br><br>
-<span class="t-cyan">⚡ Subshell Spawn & Tool Execution Latency</span><br>
-<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-• Interactive Login (\`zsh -lic\`):  <span class="t-yellow">617.6ms</span><br>
-• Non-Interactive (\`zsh -c\`):      <span class="t-green">5.3ms</span><br>
-• Tool Execution Latency Tax:     <span class="t-red">+30.6s wasted</span> per 50 agent tool calls<br>
-• Agent Fast-Path Guard:          <span class="t-red">❌ Missing (run \`agentprof fix --shell\`)</span><br><br>
-<span class="t-cyan">🔌 Model Context Protocol (MCP) Tool Schema Load</span><br>
-<span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-• Measured Schema Tokens:         <span class="t-yellow">26,293 tokens</span> across 5 of 6 servers<br>
-• Top Heavy Servers:              <span class="t-red">ghidra (14.1k tok)</span>, <span class="t-red">XcodeBuildMCP (7.2k tok)</span><br><br>
-<span class="t-cyan">💡 Optimizations Ready:</span><br>
-[1] Install opt-in subshell fast-path guard -> <span class="t-green">agentprof fix --shell</span><br>
-[2] Merge build caches into .claudeignore   -> <span class="t-green">agentprof fix --ignore</span>`,
+      scan: `<span class="t-bold">⚡ Running agentprof full workspace &amp; shell scan...</span><br>
+<br>
+<span class="t-cyan"></span><span class="t-cyan">🤖 AI Agent Context &amp; Instruction Budget</span><br>
+Always-Loaded Overhead: ≈<span class="t-yellow"></span><span class="t-yellow">134</span> tokens (<span class="t-magenta"></span><span class="t-magenta">0.1</span>% of a 200k context); <span class="t-dim">8,969</span> more load on demand<br>
+<br>
+<span class="t-cyan"></span><span class="t-cyan">🐚 Agent Shell Overhead</span><br>
+  • Login shell (\`bash -lc\`):          <span class="t-bold">118.2ms</span><br>
+  • Claude Code snapshot replay:       <span class="t-dim">— (no snapshot in ~/.claude/shell-snapshots)</span><br>
+  • Per-command agent overhead:        <span class="t-red"></span><span class="t-red">116.4ms</span> <span class="t-dim">(login shell (\`bash -lc\`))</span><br>
+<br>
+<span class="t-cyan"></span><span class="t-cyan">🔌 Model Context Protocol (MCP) Tool Schema Profiler</span><br>
+  <span class="t-bold">Claude Code     </span> <span class="t-yellow"></span><span class="t-yellow">9</span> tokens per turn <span class="t-dim">(deferred (tool search): only tool names load up front; 1 of 1 server(s) measured)</span><br>
+Heaviest agent: <span class="t-yellow"></span><span class="t-yellow">9</span> tokens per turn (<span class="t-magenta"></span><span class="t-magenta">0.0</span>% of a 128k context)<br>
+<br>
+<span class="t-cyan"></span><span class="t-cyan">🎯 Agent Skills &amp; Keyword Collision Auditor</span><br>
+Total Installed Skills:  <span class="t-cyan"></span><span class="t-cyan">3</span> skills<br>
+Always Loaded:           <span class="t-yellow"></span><span class="t-yellow">34</span> tokens (names + descriptions, in every session)<br>
+Oversized (&gt;500 lines):  <span class="t-red">🚨 1 skills</span><br>
+<br>
+<span class="t-cyan"></span><span class="t-cyan">📁 Workspace Ignore &amp; Security Guard</span><br>
+  • Claude Code deny rules: <span class="t-red">❌ none</span><br>
+  • .cursorignore:          <span class="t-yellow">❌ Missing</span><br>
+  • .gitignore:             <span class="t-green">✅ Present</span><br>
+<br>
+<span class="t-bold">🔐 Secret Files:</span><br>
+  • [🚨 High] <span class="t-bold">.env</span> -&gt; <span class="t-red">🚨 readable by Claude Code</span> (<span class="t-dim">Environment variable / API secret file</span>)<br>
+  • [🚨 Critical] <span class="t-bold">certs/dev.pem</span> -&gt; <span class="t-red">🚨 readable by Claude Code</span> (<span class="t-dim">Private key / certificate</span>)<br>
+<br>
+<span class="t-yellow"></span><span class="t-yellow">Heavy Build / Dependency Directories:</span><br>
+  • <span class="t-bold">node_modules</span> (<span class="t-dim">Node Dependencies</span>) -&gt; ❌ not gitignored (3 files)<br>
+<br>
+<span class="t-cyan"></span><span class="t-cyan">🔍 Instruction Conflicts</span><br>
+  🚨 SwiftUI observation conflict: AGENTS.md:3 prescribes &#x27;ObservableObject&#x27; while CLAUDE.md:9 prescribes &#x27;@Observable&#x27;.<br>
+<br>
+<span class="t-cyan"></span><span class="t-cyan">💡 Actionable Recommendations:</span><br>
+  [1] Agents pay 116ms of shell setup per command (login shell (\`bash -lc\`)). Trim your rc/profile, or try the opt-in guard: \`agentprof fix --shell\`<br>
+  [2] Block agent access to 2 secret file(s) with Claude Code deny rules: \`agentprof fix\`<br>
+  [3] Audit bloated agent skills: \`agentprof skills\`<br>
+  [4] Resolve 1 contradiction(s) between instruction files: \`agentprof lint\`<br>
+<br>
+<span class="t-bold">🤖 Workspace health:</span> <span class="t-bold">66</span>/100 — D (Significant Overhead) <span class="t-dim">(details: \`agentprof report\`)</span>`,
 
       mcp: `<span class="t-cyan">🔌 Model Context Protocol (MCP) Tool Schema Profiler</span><br>
 <span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
@@ -941,45 +966,67 @@
 │ context7      │ global │ —     │ —             │ <span class="t-dim">❔ Unreachable</span>      │<br>
 ╰───────────────┴────────┴───────┴───────────────┴─────────────────────╯<br><br>
 Measured Schema Load: <span class="t-yellow">26,293 tokens</span> across 5 of 6 servers (20.5% of a 128k context)<br>
-<span class="t-dim">💡 Every number above came from a real tools/list handshake — never a guess.</span>`,
+<span class="t-dim">Measured on the author's machine with real tools/list handshakes. Agents that load definitions up front pay this</span><br>
+<span class="t-dim">every turn; Claude Code defers them (tool search) and keeps only tool names in context.</span>`,
 
-      skills: `<span class="t-cyan">🎯 Agent Skills & Keyword Collision Auditor</span><br>
+      skills: `<span class="t-cyan"></span><span class="t-cyan">🎯 Agent Skills &amp; Keyword Collision Auditor</span><br>
 <span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-• Total Installed Skills: <span class="t-cyan">76 skills</span><br>
-• Total Skills Corpus:    <span class="t-yellow">1,013,049 tokens</span> (Avg: 13,329 tokens/skill)<br>
-• Bloated Skills (>2.5k): <span class="t-red">🚨 65 skills</span><br><br>
-<span class="t-yellow">⚠️ Trigger Keyword Collisions (Skills competing for identical intents):</span><br>
-╭─────────────────┬──────────────────────────────────────────────────────┬─────────────────╮<br>
-│ <span class="t-cyan">Trigger Keyword</span> │ <span class="t-cyan">Compromised Skills</span>                                  │ <span class="t-cyan">Severity</span>        │<br>
-╞═════════════════╪══════════════════════════════════════════════════════╪═════════════════╡<br>
-│ design          │ autoplan, design-consultation, design-html, +10 more │ <span class="t-red">🚨 High Overlap</span> │<br>
-│ review          │ autoplan, design-review, devex-review, +6 more       │ <span class="t-red">🚨 High Overlap</span> │<br>
-│ ios             │ ios-clean, ios-design-review, ios-fix, +3 more       │ <span class="t-red">🚨 High Overlap</span> │<br>
-│ qa              │ browse, design-review, gstack, +7 more               │ <span class="t-red">🚨 High Overlap</span> │<br>
-╰─────────────────┴──────────────────────────────────────────────────────┴─────────────────╯`,
+Total Installed Skills:  <span class="t-cyan"></span><span class="t-cyan">3</span> skills<br>
+Always Loaded:           <span class="t-yellow"></span><span class="t-yellow">34</span> tokens (names + descriptions, in every session)<br>
+Loaded on Invocation:    <span class="t-bold">8,969</span> tokens (Avg: <span class="t-dim">2989</span> tokens/skill)<br>
+Oversized (&gt;500 lines):  <span class="t-red">🚨 1 skills</span><br>
+<br>
+<span class="t-yellow"></span><span class="t-yellow">⚠️ Trigger Keyword Collisions (Skills competing for identical intents):</span><br>
+╭─────────────────┬───────────────────────────────────────────┬─────────────────────╮<br>
+│<span class="t-cyan"> Trigger Keyword </span>┆<span class="t-cyan"> Compromised Skills                        </span>┆<span class="t-cyan"> Severity            </span>│<br>
+╞═════════════════╪═══════════════════════════════════════════╪═════════════════════╡<br>
+│ review          ┆ design-review, pr-review, security-review ┆<span class="t-yellow"> ⚠️ Moderate Overlap </span>│<br>
+╰─────────────────┴───────────────────────────────────────────┴─────────────────────╯<br>
+<br>
+<span class="t-bold">Top 5 Heaviest Skills (loaded when invoked):</span><br>
+  • <span class="t-bold">security-review             </span> -&gt; <span class="t-yellow">8,081</span> tokens (627 lines) [⚠️ SKILL.md exceeds 500 lines]<br>
+  • <span class="t-bold">pr-review                   </span> -&gt; <span class="t-yellow">541</span> tokens (47 lines) [✅]<br>
+  • <span class="t-bold">design-review               </span> -&gt; <span class="t-yellow">347</span> tokens (32 lines) [✅]`,
 
-      omz: `<span class="t-cyan">🐚 Oh My Zsh & Shell Plugin Latency Audit</span><br>
+      bench: `<span class="t-bold">⚡ Timing shell startup the way agents use it (5 runs each)...</span><br>
+<br>
+<span class="t-cyan"></span><span class="t-cyan">🐚 Agent Shell Overhead</span><br>
 <span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-Total Shell Startup Time: <span class="t-yellow">617.6ms</span><br>
-Bytecode Compiled (.zwc): <span class="t-yellow">❌ No (run \`zcompile ~/.zshrc\`)</span><br><br>
-<span class="t-bold">Plugin Startup Breakdown:</span><br>
-  1. nvm                      <span class="t-red">410.0ms</span> (66.4%) 🚨 Extremely Slow (Node version check)<br>
-  2. git                       <span class="t-yellow">95.0ms</span> (15.4%) ⚠️ Heavy prompt git status hooks<br>
-  3. zsh-syntax-highlighting   <span class="t-yellow">62.0ms</span> (10.0%) ⚠️ Sourced before compinit<br>
-  4. docker                    <span class="t-green">38.0ms</span>  (6.1%) ✅ Acceptable<br>
-  5. zsh-autosuggestions       <span class="t-green">24.0ms</span>  (3.9%) ✅ Fast<br><br>
-<span class="t-dim">💡 Run \`agentprof fix --all\` to lazy-load NVM and inject subshell bypass guard.</span>`,
+  • Shell:                             <span class="t-bold">bash</span><br>
+  • Bare spawn (\`bash -c\`):            <span class="t-green"></span><span class="t-green">1.6ms</span><br>
+  • Login shell (\`bash -lc\`):          <span class="t-bold">111.1ms</span><br>
+  • Interactive login (\`bash -lic\`):   <span class="t-yellow"></span><span class="t-yellow">118.6ms</span><br>
+  • Claude Code snapshot replay:       <span class="t-dim">— (no snapshot in ~/.claude/shell-snapshots)</span><br>
+  • Per-command agent overhead:        <span class="t-red"></span><span class="t-red">109.5ms</span> <span class="t-dim">(login shell (\`bash -lc\`))</span><br>
+  • Overhead across 50 commands:       <span class="t-red"></span><span class="t-red">+5.5s</span><br>
+  • Rating:                            ⚠️ Sluggish (80-250ms tax)<br>
+  • Agent fast-path guard:             <span class="t-dim">not installed (optional: \`agentprof fix --shell\`)</span><br>
+  <span class="t-dim">(median of 5 runs, after warm-up)</span>`,
 
-      lint: `<span class="t-cyan">🔍 Instruction Quality & Conflict Report</span><br>
+      lint: `<span class="t-bold">🔍 Linting workspace instruction files &amp; checking for contradictions...</span><br>
+<br>
+<span class="t-cyan"></span><span class="t-cyan">📋 Instruction Quality &amp; Conflict Report</span><br>
 <span class="t-dim">══════════════════════════════════════════════════════════════════════════════</span><br>
-╭────────────────────────────────────────┬──────┬─────────────┬────────────────────────────────────────────────────────╮<br>
-│ <span class="t-cyan">File</span>                                   │ <span class="t-cyan">Line</span> │ <span class="t-cyan">Severity</span>    │ <span class="t-cyan">Issue</span>                                                  │<br>
-╞════════════════════════════════════════╪══════╪═════════════╪════════════════════════════════════════════════════════╡<br>
-│ appletv-network-info vs connection-info│ 1    │ <span class="t-red">🚨 Conflict</span> │ Mentions ObservableObject while other uses @Observable │<br>
-│ coin-flip-justice vs terminal-profiler │ 1    │ <span class="t-red">🚨 Conflict</span> │ Target OS version mismatch: iOS 16 vs iOS 26           │<br>
-│ .cursorrules                           │ 42   │ <span class="t-yellow">⚠️ Warning</span>  │ Vague rule 'write clean code' provides zero constraint │<br>
-╰────────────────────────────────────────┴──────┴─────────────┴────────────────────────────────────────────────────────╯<br><br>
-Total Issues: <span class="t-yellow">33 contradictions found</span> across 16 files.`
+╭────────────────────────┬──────┬─────────────┬────────────────────────────────────┬───────────────────────────────────╮<br>
+│<span class="t-cyan"> File                   </span>┆<span class="t-cyan"> Line </span>┆<span class="t-cyan"> Severity    </span>┆<span class="t-cyan"> Issue                              </span>┆<span class="t-cyan"> Suggested Fix                     </span>│<br>
+╞════════════════════════╪══════╪═════════════╪════════════════════════════════════╪═══════════════════════════════════╡<br>
+│ CLAUDE.md              ┆ 4    ┆<span class="t-yellow"> ⚠️ Warning  </span>┆ Vague rule &#x27;- Follow best          ┆ Replace with a specific,          │<br>
+│                        ┆      ┆             ┆ practices.&#x27; spends tokens without  ┆ checkable constraint (a named     │<br>
+│                        ┆      ┆             ┆ providing an actionable            ┆ API, a file layout, a forbidden   │<br>
+│                        ┆      ┆             ┆ constraint.                        ┆ pattern).                         │<br>
+├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤<br>
+│ CLAUDE.md              ┆ 5    ┆<span class="t-yellow"> ⚠️ Warning  </span>┆ An absolute directive              ┆ State the condition first, then   │<br>
+│                        ┆      ┆             ┆ (&#x27;always&#x27;/&#x27;never&#x27;) is immediately  ┆ the directive.                    │<br>
+│                        ┆      ┆             ┆ qualified, leaving the real rule   ┆                                   │<br>
+│                        ┆      ┆             ┆ ambiguous.                         ┆                                   │<br>
+├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤<br>
+│ AGENTS.md vs CLAUDE.md ┆ 3    ┆<span class="t-red"> 🚨 Conflict </span>┆ SwiftUI observation conflict:      ┆ Align instructions to use a       │<br>
+│                        ┆      ┆             ┆ AGENTS.md:3 prescribes             ┆ single unified standard across    │<br>
+│                        ┆      ┆             ┆ &#x27;ObservableObject&#x27; while           ┆ all agent files.                  │<br>
+│                        ┆      ┆             ┆ CLAUDE.md:9 prescribes             ┆                                   │<br>
+│                        ┆      ┆             ┆ &#x27;@Observable&#x27;.                     ┆                                   │<br>
+╰────────────────────────┴──────┴─────────────┴────────────────────────────────────┴───────────────────────────────────╯<br>
+Total Issues: <span class="t-yellow"></span><span class="t-yellow">3</span> (<span class="t-red"></span><span class="t-red">1</span> contradictions) across <span class="t-bold">2</span> files`
     };
 
     function switchTerm(type) {
@@ -997,12 +1044,12 @@ Total Issues: <span class="t-yellow">33 contradictions found</span> across 16 fi
       document.getElementById('val-devs').innerText = devs;
       document.getElementById('val-mcp').innerText = mcp;
 
-      // 600ms latency tax per tool call * calls * 22 work days
-      const secondsSavedMonth = calls * 0.6 * devs * 22;
+      // 100ms of shell overhead per command * commands * 22 work days
+      const secondsSavedMonth = calls * 0.1 * devs * 22;
       const hoursSaved = (secondsSavedMonth / 3600).toFixed(1);
 
-      // (mcp * 2500 tokens * calls * devs * 22) / 1000 * $0.003 (Sonnet input rate)
-      const tokenCostSaved = ((mcp * 2500 * calls * devs * 22) / 1000 * 0.003).toFixed(2);
+      // mcp * 2,500 tokens re-read from cache on every call: $0.20 per million
+      const tokenCostSaved = ((mcp * 2500 * calls * devs * 22) / 1e6 * 0.2).toFixed(2);
 
       document.getElementById('res-time').innerText = `${hoursSaved} hrs`;
       document.getElementById('res-cost').innerText = `$${tokenCostSaved}`;
