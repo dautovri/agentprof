@@ -1110,6 +1110,10 @@ impl ToolSearchMode {
 /// Expands `${VAR}`, `${VAR:-default}` and `${env:VAR}` from the environment,
 /// as agents do for MCP server configs.
 fn expand_env(value: &str) -> String {
+    expand_env_with(value, |name| std::env::var(name).ok())
+}
+
+fn expand_env_with(value: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
     let mut out = String::new();
     let mut rest = value;
     while let Some(start) = rest.find("${") {
@@ -1125,8 +1129,8 @@ fn expand_env(value: &str) -> String {
             Some((n, d)) => (n, Some(d)),
             None => (expr, None),
         };
-        match std::env::var(name) {
-            Ok(v) if !v.is_empty() => out.push_str(&v),
+        match lookup(name) {
+            Some(v) if !v.is_empty() => out.push_str(&v),
             _ => out.push_str(default.unwrap_or("")),
         }
         rest = &after[end + 1..];
@@ -1382,11 +1386,20 @@ done
 
     #[test]
     fn test_expand_env() {
-        // SAFETY: tests in this module do not read this variable concurrently.
-        unsafe { std::env::set_var("AGENTPROF_TEST_TOKEN", "abc") };
-        assert_eq!(expand_env("Bearer ${AGENTPROF_TEST_TOKEN}"), "Bearer abc");
-        assert_eq!(expand_env("${env:AGENTPROF_TEST_TOKEN}"), "abc");
-        assert_eq!(expand_env("${AGENTPROF_UNSET_VAR:-fallback}"), "fallback");
-        assert_eq!(expand_env("plain"), "plain");
+        let env = |name: &str| match name {
+            "TOKEN" => Some("abc".to_string()),
+            "EMPTY" => Some(String::new()),
+            _ => None,
+        };
+        assert_eq!(expand_env_with("Bearer ${TOKEN}", env), "Bearer abc");
+        assert_eq!(expand_env_with("${env:TOKEN}", env), "abc");
+        assert_eq!(expand_env_with("${UNSET:-fallback}", env), "fallback");
+        assert_eq!(expand_env_with("${EMPTY:-fallback}", env), "fallback");
+        assert_eq!(expand_env_with("${UNSET}/x", env), "/x");
+        assert_eq!(
+            expand_env_with("keep ${unterminated", env),
+            "keep ${unterminated"
+        );
+        assert_eq!(expand_env_with("plain", env), "plain");
     }
 }
