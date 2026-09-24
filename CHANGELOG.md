@@ -7,7 +7,7 @@ is 0.x, minor releases may change command output and JSON fields.
 
 ## [Unreleased]
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-09-24
 
 The first release since v0.2.0. Every release asset and the Homebrew formula
 of v0.2.0 were built from the initial commit, so they include the
