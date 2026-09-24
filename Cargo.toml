@@ -17,8 +17,8 @@ repository = "https://github.com/dautovri/agentprof"
 [dependencies]
 clap = { version = "4.5", features = ["derive", "cargo"] }
 clap_complete = "4.5"
-tiktoken-rs = "0.6"
-comfy-table = "7.1"
+tiktoken-rs = "0.12"
+comfy-table = "8.0"
 owo-colors = { version = "4.1", features = ["supports-colors"] }
 ignore = "0.4"
 regex = "1.11"
@@ -26,9 +26,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 anyhow = "1.0"
 walkdir = "2.5"
-which = "7.0"
-ratatui = "0.29"
-crossterm = "0.28"
+which = "8.0"
+ratatui = "0.30"
+crossterm = "0.29"
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 
 [target.'cfg(unix)'.dependencies]
