@@ -135,12 +135,13 @@ impl TableRenderer {
                     .magenta()
             );
             println!(
-                "Cost of Re-sending Measured Schemas: {} per 100 turns",
+                "Cost of Measured Schemas: {} per 100 turns {}",
                 Formatters::format_currency(TokenCounter::estimate_cost_per_100_turns(
                     report.measured_schema_tokens
                 ))
                 .bold()
-                .green()
+                .green(),
+                format!("({})", crate::core::tokens::COST_BASIS).dimmed()
             );
         } else {
             println!(
@@ -314,12 +315,38 @@ impl TableRenderer {
             Formatters::format_tokens(report.total_tokens_used).bold()
         );
         println!(
+            "  • API Requests:            {} {}",
+            report.api_requests.bold(),
+            format!(
+                "({} duplicate transcript entries merged)",
+                report.duplicate_entries_merged
+            )
+            .dimmed()
+        );
+        println!(
             "  • Est. Spend:              {} {}",
             Formatters::format_currency(report.total_estimated_cost_usd)
                 .bold()
                 .green(),
             format!("({})", report.pricing_label).dimmed()
         );
+        for m in report
+            .cost_by_model
+            .iter()
+            .filter(|m| m.usage.total() > 0)
+            .take(6)
+        {
+            let cost = m
+                .cost_usd
+                .map(Formatters::format_currency)
+                .unwrap_or_else(|| "unpriced".to_string());
+            println!(
+                "      {:<28} {:>9}  {} requests",
+                m.model.dimmed(),
+                cost,
+                m.requests
+            );
+        }
         println!(
             "  • Loop Thrash Incidents:   {}",
             if report.loop_thrash_incidents > 0 {
@@ -511,18 +538,24 @@ impl TableRenderer {
         println!("{table}");
 
         println!(
-            "Total Overhead: {} tokens across {} files ({:.1}% of 128k context)",
+            "Total Overhead: ≈{} tokens across {} files ({:.1}% of a 200k context)",
             Formatters::format_tokens(summary.total_tokens_cl100k)
                 .bold()
                 .yellow(),
             summary.total_files.bold(),
-            summary.pct_of_128k.bold().magenta()
+            summary.pct_of_200k.bold().magenta()
         );
         println!(
-            "Estimated Turn Cost: {} per 100 prompt turns",
+            "Estimated Cost: {} per 100 turns {}",
             Formatters::format_currency(summary.est_cost_per_100_turns)
                 .bold()
-                .green()
+                .green(),
+            format!("({})", crate::core::tokens::COST_BASIS).dimmed()
+        );
+        println!(
+            "{}",
+            "Token counts use the cl100k tokenizer and approximate Claude's (Claude typically counts more)."
+                .dimmed()
         );
     }
 

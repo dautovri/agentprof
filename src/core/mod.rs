@@ -6,6 +6,7 @@ pub mod fixer;
 pub mod jit_compiler;
 pub mod mcp_profiler;
 pub mod omz_profiler;
+pub mod pricing;
 pub mod report_generator;
 pub mod rule_compressor;
 pub mod rule_linter;

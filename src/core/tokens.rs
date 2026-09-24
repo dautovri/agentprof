@@ -1,56 +1,17 @@
 use tiktoken_rs::{cl100k_base_singleton, o200k_base_singleton};
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokenModel {
-    /// Anthropic Claude / GPT-4 (cl100k_base tokenizer)
-    Claude,
-    /// OpenAI GPT-4o / o1 / o3 (o200k_base tokenizer)
-    Gpt4o,
-    /// Approximation for Google Gemini
-    Gemini,
-}
+use crate::core::pricing::{self, CACHE_WRITE_5M_MULTIPLIER};
 
-impl TokenModel {
-    #[allow(dead_code)]
-    pub fn name(&self) -> &'static str {
-        match self {
-            TokenModel::Claude => "Claude (cl100k)",
-            TokenModel::Gpt4o => "GPT-4o (o200k)",
-            TokenModel::Gemini => "Gemini (est.)",
-        }
-    }
-}
-
-/// Published API list prices, in USD per 1M tokens.
-///
-/// Fixed instruction/schema payloads are re-sent as *input* on every turn, so
-/// input pricing is what any "cost of context" figure must be based on.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Pricing {
-    pub label: &'static str,
-    pub input_per_mtok: f64,
-    pub output_per_mtok: f64,
-}
-
-impl Pricing {
-    /// Default reference model for cost estimates (Claude Sonnet class).
-    pub const DEFAULT: Pricing = Pricing {
-        label: "Claude Sonnet (input $3/Mtok)",
-        input_per_mtok: 3.0,
-        output_per_mtok: 15.0,
-    };
-
-    pub fn input_cost(&self, tokens: usize) -> f64 {
-        (tokens as f64 / 1_000_000.0) * self.input_per_mtok
-    }
-
-    pub fn output_cost(&self, tokens: usize) -> f64 {
-        (tokens as f64 / 1_000_000.0) * self.output_per_mtok
-    }
-}
+/// How fixed-context costs are estimated, for display next to the figures.
+pub const COST_BASIS: &str =
+    "Claude Sonnet 5 list price; fixed context cached as 1 write + 99 reads per 100 turns";
 
 /// Fast token counter supporting multiple tokenizer backends.
+///
+/// These are OpenAI tokenizers. Claude's tokenizer is not public, and Claude
+/// typically counts more tokens for the same text (Anthropic notes that Claude
+/// 4.7 and later count roughly 30% more than earlier Claude models), so every
+/// count here is an approximation for sizing, not an exact Claude figure.
 ///
 /// Both tokenizers are process-wide singletons: building a `CoreBPE` parses a
 /// ~1.7MB merge table, so re-building it per file made large audits ~100x
@@ -58,19 +19,32 @@ impl Pricing {
 pub struct TokenCounter;
 
 impl TokenCounter {
-    /// Counts tokens using cl100k_base (Claude 3.x/4.x approximation, GPT-4).
+    /// Counts tokens using cl100k_base.
     pub fn count_cl100k(text: &str) -> usize {
         cl100k_base_singleton().lock().encode_ordinary(text).len()
     }
 
-    /// Counts tokens using o200k_base (GPT-4o, o1, o3).
+    /// Counts tokens using o200k_base (GPT-4o and later OpenAI models).
     pub fn count_o200k(text: &str) -> usize {
         o200k_base_singleton().lock().encode_ordinary(text).len()
     }
 
-    /// Cost in USD of re-sending `tokens` of fixed context as input for 100 turns.
+    /// Cost in USD of carrying `tokens` of fixed context (instructions, tool
+    /// schemas) through 100 agent turns at the reference model's list price.
+    ///
+    /// Agents cache their fixed prefix, so it bills as one 5-minute cache write
+    /// followed by 99 cache reads. Pricing all 100 turns as full-price input
+    /// overstated the cost roughly ninefold.
     pub fn estimate_cost_per_100_turns(tokens: usize) -> f64 {
-        Pricing::DEFAULT.input_cost(tokens) * 100.0
+        let p = pricing::reference_price();
+        let mtok = tokens as f64 / 1_000_000.0;
+        mtok * p.input * (CACHE_WRITE_5M_MULTIPLIER + 99.0 * p.cache_read_multiplier)
+    }
+
+    /// Cost in USD of one turn's worth of cached fixed context.
+    pub fn cached_cost_per_turn(tokens: usize) -> f64 {
+        let p = pricing::reference_price();
+        tokens as f64 / 1_000_000.0 * p.input * p.cache_read_multiplier
     }
 
     /// Calculates token share against a target context window (e.g. 128,000 or 200,000)
@@ -112,10 +86,11 @@ mod tests {
     }
 
     #[test]
-    fn test_cost_uses_input_pricing() {
-        // 10k fixed tokens re-sent 100 times = 1M input tokens = one input-Mtok charge.
-        let cost = TokenCounter::estimate_cost_per_100_turns(10_000);
-        assert!((cost - Pricing::DEFAULT.input_per_mtok).abs() < 1e-9);
+    fn test_fixed_context_cost_is_cache_aware() {
+        // 1M tokens at $2/MTok: one 1.25x write plus 99 reads at 0.1x.
+        let cost = TokenCounter::estimate_cost_per_100_turns(1_000_000);
+        assert!((cost - 2.0 * (1.25 + 9.9)).abs() < 1e-9);
+        assert!((TokenCounter::cached_cost_per_turn(1_000_000) - 0.2).abs() < 1e-9);
     }
 
     #[test]

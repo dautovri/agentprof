@@ -174,8 +174,7 @@ impl AgentPlatformProfiler {
         let context_window = 128_000;
         let fixed_payload_percentage =
             (total_fixed_instruction_tokens as f64 / context_window as f64) * 100.0;
-        let est_turn_cost_usd =
-            crate::core::tokens::Pricing::DEFAULT.input_cost(total_fixed_instruction_tokens);
+        let est_turn_cost_usd = TokenCounter::cached_cost_per_turn(total_fixed_instruction_tokens);
 
         let mut recommendations = Vec::new();
         if total_fixed_instruction_tokens > 4_000 {
@@ -332,8 +331,7 @@ impl AgentPlatformProfiler {
         let context_window = 200_000;
         let fixed_payload_percentage =
             (total_fixed_instruction_tokens as f64 / context_window as f64) * 100.0;
-        let est_turn_cost_usd =
-            crate::core::tokens::Pricing::DEFAULT.input_cost(total_fixed_instruction_tokens);
+        let est_turn_cost_usd = TokenCounter::cached_cost_per_turn(total_fixed_instruction_tokens);
 
         let mut recommendations = Vec::new();
         if cache_history_size > 50_000_000 {
@@ -447,8 +445,7 @@ impl AgentPlatformProfiler {
         let context_window = 128_000;
         let fixed_payload_percentage =
             (total_fixed_instruction_tokens as f64 / context_window as f64) * 100.0;
-        let est_turn_cost_usd =
-            crate::core::tokens::Pricing::DEFAULT.input_cost(total_fixed_instruction_tokens);
+        let est_turn_cost_usd = TokenCounter::cached_cost_per_turn(total_fixed_instruction_tokens);
 
         let mut recommendations = Vec::new();
         if !is_installed && config_files.is_empty() {
