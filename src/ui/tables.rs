@@ -183,14 +183,18 @@ impl TableRenderer {
             report.total_skills.bold().cyan()
         );
         println!(
-            "Total Skills Corpus:     {} tokens (Avg: {} tokens/skill)",
-            Formatters::format_tokens(report.total_tokens)
+            "Always Loaded:           {} tokens (names + descriptions, in every session)",
+            Formatters::format_tokens(report.always_loaded_tokens)
                 .bold()
-                .yellow(),
+                .yellow()
+        );
+        println!(
+            "Loaded on Invocation:    {} tokens (Avg: {} tokens/skill)",
+            Formatters::format_tokens(report.total_tokens).bold(),
             report.average_tokens.to_string().dimmed()
         );
         println!(
-            "Bloated Skills (>2.5k):  {}",
+            "Oversized (>500 lines):  {}",
             if report.bloated_skills_count > 0 {
                 format!("🚨 {} skills", report.bloated_skills_count)
                     .red()
@@ -244,9 +248,16 @@ impl TableRenderer {
         }
 
         if !report.top_heavy_skills.is_empty() {
-            println!("\n{}", "Top 5 Heaviest Skills:".bold());
+            println!(
+                "\n{}",
+                "Top 5 Heaviest Skills (loaded when invoked):".bold()
+            );
             for s in report.top_heavy_skills.iter().take(5) {
-                let badge = if s.is_bloated { "🚨 Bloated" } else { "✅" };
+                let badge = if s.issues.is_empty() {
+                    "✅".to_string()
+                } else {
+                    format!("⚠️ {}", s.issues.join("; "))
+                };
                 println!(
                     "  • {:<28} -> {} tokens ({} lines) [{}]",
                     s.name.bold(),
@@ -514,6 +525,7 @@ impl TableRenderer {
                 Cell::new("Type").fg(Color::Cyan),
                 Cell::new("Tokens").fg(Color::Cyan),
                 Cell::new("Lines").fg(Color::Cyan),
+                Cell::new("Loaded").fg(Color::Cyan),
                 Cell::new("Status").fg(Color::Cyan),
             ]);
 
@@ -531,6 +543,7 @@ impl TableRenderer {
                 Cell::new(file.category.label()),
                 Cell::new(Formatters::format_tokens(file.tokens_cl100k)),
                 Cell::new(file.lines.to_string()),
+                Cell::new(file.load_condition.as_deref().unwrap_or("every session")),
                 status_cell,
             ]);
         }
@@ -538,12 +551,12 @@ impl TableRenderer {
         println!("{table}");
 
         println!(
-            "Total Overhead: ≈{} tokens across {} files ({:.1}% of a 200k context)",
+            "Always-Loaded Overhead: ≈{} tokens ({:.1}% of a 200k context); {} more load on demand",
             Formatters::format_tokens(summary.total_tokens_cl100k)
                 .bold()
                 .yellow(),
-            summary.total_files.bold(),
-            summary.pct_of_200k.bold().magenta()
+            summary.pct_of_200k.bold().magenta(),
+            Formatters::format_tokens(summary.conditional_tokens_cl100k).dimmed()
         );
         println!(
             "Estimated Cost: {} per 100 turns {}",

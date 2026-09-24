@@ -281,9 +281,9 @@ impl TuiApp {
 
         lines.push(Line::from(""));
         lines.push(Line::from(format!(
-            "  • Installed Agent Skills:  {} skills ({} tokens)",
+            "  • Installed Agent Skills:  {} skills ({} tokens always loaded)",
             data.skills.total_skills,
-            Formatters::format_tokens(data.skills.total_tokens)
+            Formatters::format_tokens(data.skills.always_loaded_tokens)
         )));
         lines.push(Line::from(format!(
             "  • Unignored Build Caches:  {} heavy folder(s)",
@@ -302,8 +302,9 @@ impl TuiApp {
         let mut lines = vec![
             Line::from(Span::styled(
                 format!(
-                    "Total context: {} tokens across {} file(s)",
+                    "Always loaded: {} tokens · on demand: {} tokens · {} file(s)",
                     Formatters::format_tokens(c.total_tokens_cl100k),
+                    Formatters::format_tokens(c.conditional_tokens_cl100k),
                     c.total_files
                 ),
                 Style::default()
@@ -319,10 +320,11 @@ impl TuiApp {
         }
         for file in &c.files {
             lines.push(Line::from(format!(
-                "  • {:<48} {:>8} tokens ({} lines)",
+                "  • {:<48} {:>8} tokens ({} lines) — {}",
                 file.relative_path,
                 Formatters::format_tokens(file.tokens_cl100k),
-                file.lines
+                file.lines,
+                file.load_condition.as_deref().unwrap_or("every session")
             )));
         }
         lines
@@ -370,8 +372,9 @@ impl TuiApp {
         let mut lines = vec![
             Line::from(Span::styled(
                 format!(
-                    "{} skills, {} tokens, {} collision(s)",
+                    "{} skills · {} tokens always loaded · {} on invocation · {} collision(s)",
                     s.total_skills,
+                    Formatters::format_tokens(s.always_loaded_tokens),
                     Formatters::format_tokens(s.total_tokens),
                     s.collisions.len()
                 ),

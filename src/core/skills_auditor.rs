@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+use crate::core::frontmatter;
 use crate::core::tokens::TokenCounter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,10 +15,17 @@ pub struct SkillItem {
     pub relative_path: String,
     pub source: String,
     pub description: String,
+    /// Tokens of the name and description, which agents load into every
+    /// session so they know the skill exists.
+    pub always_loaded_tokens: usize,
+    /// Tokens of the whole SKILL.md, loaded only when the skill is invoked.
     pub tokens: usize,
     pub lines: usize,
     pub trigger_keywords: Vec<String>,
+    /// SKILL.md is longer than the 500 lines Anthropic's skill-authoring
+    /// guidance recommends; reference material belongs in separate files.
     pub is_bloated: bool,
+    pub issues: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +38,10 @@ pub struct SkillCollision {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SkillsAuditReport {
     pub total_skills: usize,
+    /// Tokens loaded into every session: the sum of skill names and
+    /// descriptions. This is the context cost of having skills installed.
+    pub always_loaded_tokens: usize,
+    /// Tokens of all SKILL.md files, each loaded only when its skill runs.
     pub total_tokens: usize,
     pub average_tokens: usize,
     pub bloated_skills_count: usize,
@@ -38,6 +50,11 @@ pub struct SkillsAuditReport {
     pub all_skills: Vec<SkillItem>,
     pub recommendations: Vec<String>,
 }
+
+/// Anthropic's guidance keeps SKILL.md under 500 lines.
+const MAX_SKILL_LINES: usize = 500;
+/// The Agent Skills format caps descriptions at 1,024 characters.
+const MAX_DESCRIPTION_CHARS: usize = 1024;
 
 /// Intents that commonly collide across installed skills.
 const COMMON_TRIGGERS: &[&str] = &[
@@ -79,12 +96,23 @@ pub struct SkillsAuditor;
 impl SkillsAuditor {
     pub fn audit(workspace_root: &Path) -> Result<SkillsAuditReport> {
         let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
+        Self::audit_with_home(workspace_root, &home)
+    }
+
+    pub(crate) fn audit_with_home(workspace_root: &Path, home: &Path) -> Result<SkillsAuditReport> {
         let mut skill_paths = Vec::new();
 
-        // 1. Claude skills
+        // 1. Claude Code skills: personal and project.
         let claude_skills = home.join(".claude/skills");
         if claude_skills.exists() {
             skill_paths.push((claude_skills, "Claude (~/.claude/skills)".to_string()));
+        }
+        let ws_claude_skills = workspace_root.join(".claude/skills");
+        if ws_claude_skills.exists() {
+            skill_paths.push((
+                ws_claude_skills,
+                "Claude project (.claude/skills)".to_string(),
+            ));
         }
 
         // 2. OpenCode skills
@@ -135,29 +163,7 @@ impl SkillsAuditor {
                     }
 
                     if let Ok(content) = fs::read_to_string(path) {
-                        let skill_name = path
-                            .parent()
-                            .and_then(|p| p.file_name())
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_else(|| "unknown-skill".to_string());
-
-                        let tokens = TokenCounter::count_cl100k(&content);
-                        let lines = content.lines().count();
-                        let desc = Self::extract_description(&content);
-                        let triggers = Self::extract_triggers(&skill_name, &desc);
-                        let is_bloated = tokens > 2_500;
-
-                        all_skills.push(SkillItem {
-                            name: skill_name,
-                            path: path.to_path_buf(),
-                            relative_path: path.to_string_lossy().to_string(),
-                            source: source_label.clone(),
-                            description: desc,
-                            tokens,
-                            lines,
-                            trigger_keywords: triggers,
-                            is_bloated,
-                        });
+                        all_skills.push(Self::inspect_skill(path, &content, &source_label));
                     }
                 }
             }
@@ -176,16 +182,35 @@ impl SkillsAuditor {
 
         let top_heavy_skills = all_skills.iter().take(10).cloned().collect();
 
+        let always_loaded_tokens: usize = all_skills.iter().map(|s| s.always_loaded_tokens).sum();
+        let without_description = all_skills
+            .iter()
+            .filter(|s| s.description.is_empty())
+            .count();
+
         let mut recommendations = Vec::new();
         if bloated_skills_count > 0 {
-            recommendations.push(format!("Found {} bloated skill(s) exceeding 2,500 tokens. Ensure they are loaded dynamically via skill tools, not preloaded.", bloated_skills_count));
+            recommendations.push(format!(
+                "{} skill(s) have a SKILL.md over {} lines. Move reference material into separate files that load only when needed.",
+                bloated_skills_count, MAX_SKILL_LINES
+            ));
+        }
+        if without_description > 0 {
+            recommendations.push(format!(
+                "{} skill(s) have no description, so the agent has nothing to match requests against.",
+                without_description
+            ));
         }
         if !collisions.is_empty() {
-            recommendations.push(format!("Detected {} trigger collision(s) where multiple skills compete for identical intents.", collisions.len()));
+            recommendations.push(format!(
+                "Detected {} trigger collision(s) where multiple skills compete for identical intents.",
+                collisions.len()
+            ));
         }
 
         Ok(SkillsAuditReport {
             total_skills,
+            always_loaded_tokens,
             total_tokens,
             average_tokens,
             bloated_skills_count,
@@ -196,33 +221,66 @@ impl SkillsAuditor {
         })
     }
 
-    /// Reads `description:` from YAML frontmatter, falling back to an XML-style
-    /// tag. Only the frontmatter block is searched so a `description:` line
-    /// inside example code cannot be mistaken for the skill's own description.
-    fn extract_description(content: &str) -> String {
-        let mut lines = content.lines();
-        if lines.next().map(str::trim) == Some("---") {
-            for line in lines {
-                let trimmed = line.trim();
-                if trimmed == "---" {
-                    break;
-                }
-                if let Some(rest) = trimmed.strip_prefix("description:") {
-                    let value = rest.trim().trim_matches('"').trim_matches('\'');
-                    if !value.is_empty() && value != ">" && value != "|" {
-                        return value.to_string();
-                    }
-                }
-            }
+    fn inspect_skill(path: &Path, content: &str, source: &str) -> SkillItem {
+        let frontmatter = frontmatter::parse(content).unwrap_or_default();
+        let dir_name = path
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "unknown-skill".to_string());
+        let name = frontmatter
+            .get("name")
+            .filter(|n| !n.is_empty())
+            .map(String::from)
+            .unwrap_or(dir_name);
+        let description = frontmatter
+            .get("description")
+            .map(String::from)
+            .or_else(|| Self::xml_description(content))
+            .unwrap_or_default();
+
+        let tokens = TokenCounter::count_cl100k(content);
+        let lines = content.lines().count();
+        // What an agent keeps in context for every installed skill.
+        let always_loaded_tokens =
+            TokenCounter::count_cl100k(&format!("{}: {}", name, description));
+
+        let mut issues = Vec::new();
+        if description.is_empty() {
+            issues.push("missing description".to_string());
+        } else if description.chars().count() > MAX_DESCRIPTION_CHARS {
+            issues.push(format!(
+                "description exceeds {} characters",
+                MAX_DESCRIPTION_CHARS
+            ));
+        }
+        let is_bloated = lines > MAX_SKILL_LINES;
+        if is_bloated {
+            issues.push(format!("SKILL.md exceeds {} lines", MAX_SKILL_LINES));
         }
 
-        for line in content.lines().take(40) {
-            let trimmed = line.trim();
-            if let Some(rest) = trimmed.strip_prefix("<description>") {
-                return rest.trim_end_matches("</description>").trim().to_string();
-            }
+        SkillItem {
+            trigger_keywords: Self::extract_triggers(&name, &description),
+            name,
+            path: path.to_path_buf(),
+            relative_path: path.to_string_lossy().to_string(),
+            source: source.to_string(),
+            description,
+            always_loaded_tokens,
+            tokens,
+            lines,
+            is_bloated,
+            issues,
         }
-        String::new()
+    }
+
+    /// Fallback for skills that declare `<description>` instead of frontmatter.
+    fn xml_description(content: &str) -> Option<String> {
+        content.lines().take(40).find_map(|line| {
+            line.trim()
+                .strip_prefix("<description>")
+                .map(|rest| rest.trim_end_matches("</description>").trim().to_string())
+        })
     }
 
     /// Extracts trigger keywords from the skill's *name and description* only.
@@ -324,15 +382,74 @@ mod tests {
     #[test]
     fn test_description_read_from_frontmatter() {
         let content = "---\nname: demo\ndescription: Audits app store metadata\n---\n\n# Body\ndescription: not this one\n";
+        let skill = SkillsAuditor::inspect_skill(Path::new("/s/demo/SKILL.md"), content, "test");
+        assert_eq!(skill.description, "Audits app store metadata");
+        assert!(skill.issues.is_empty(), "{:?}", skill.issues);
+    }
+
+    /// Regression: folded `description: >` values were read as empty, so the
+    /// skill looked undescribed and never showed up in collision checks.
+    #[test]
+    fn test_folded_description_is_read() {
+        let content = "---\nname: pr-review\ndescription: >\n  Review pull requests\n  for security issues.\n---\nBody\n";
+        let skill = SkillsAuditor::inspect_skill(Path::new("/s/x/SKILL.md"), content, "test");
         assert_eq!(
-            SkillsAuditor::extract_description(content),
-            "Audits app store metadata"
+            skill.description,
+            "Review pull requests for security issues."
         );
+        assert!(skill.trigger_keywords.contains(&"review".to_string()));
+        assert!(skill.trigger_keywords.contains(&"security".to_string()));
     }
 
     #[test]
-    fn test_description_absent_yields_empty() {
-        assert_eq!(SkillsAuditor::extract_description("# Just a heading\n"), "");
+    fn test_description_absent_is_an_issue() {
+        let skill =
+            SkillsAuditor::inspect_skill(Path::new("/s/x/SKILL.md"), "# Just a heading\n", "test");
+        assert_eq!(skill.description, "");
+        assert_eq!(skill.name, "x");
+        assert!(
+            skill
+                .issues
+                .iter()
+                .any(|i| i.contains("missing description"))
+        );
+    }
+
+    /// Only the name and description stay in context; the body loads when the
+    /// skill runs, so a long body must not count as always-loaded cost.
+    #[test]
+    fn test_always_loaded_tokens_cover_only_metadata() {
+        let body = "Detailed step.\n".repeat(600);
+        let content = format!("---\nname: big\ndescription: Deploy the app\n---\n{}", body);
+        let skill = SkillsAuditor::inspect_skill(Path::new("/s/big/SKILL.md"), &content, "test");
+        assert!(
+            skill.always_loaded_tokens < 20,
+            "{}",
+            skill.always_loaded_tokens
+        );
+        assert!(skill.tokens > 1_000);
+        assert!(skill.is_bloated, "600+ lines exceeds the 500-line guidance");
+    }
+
+    #[test]
+    fn test_project_skills_are_discovered() {
+        let dir = std::env::temp_dir().join(format!("agentprof_skills_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("ws/.claude/skills/deploy")).unwrap();
+        fs::create_dir_all(dir.join("home")).unwrap();
+        fs::write(
+            dir.join("ws/.claude/skills/deploy/SKILL.md"),
+            "---\nname: deploy\ndescription: Deploy and release\n---\n",
+        )
+        .unwrap();
+
+        let report = SkillsAuditor::audit_with_home(&dir.join("ws"), &dir.join("home")).unwrap();
+        assert_eq!(report.total_skills, 1);
+        assert_eq!(
+            report.all_skills[0].source,
+            "Claude project (.claude/skills)"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -343,10 +460,12 @@ mod tests {
             relative_path: name.to_string(),
             source: "test".to_string(),
             description: String::new(),
+            always_loaded_tokens: 1,
             tokens: 10,
             lines: 1,
             trigger_keywords: vec![kw.to_string()],
             is_bloated: false,
+            issues: Vec::new(),
         };
         let two = vec![mk("a", "design"), mk("b", "design")];
         assert!(SkillsAuditor::detect_collisions(&two).is_empty());

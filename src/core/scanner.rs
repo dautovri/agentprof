@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::core::frontmatter;
 use crate::core::tokens::TokenCounter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +20,7 @@ pub enum RuleFileCategory {
     AiderConventions,
     CodexMd,
     GrokMd,
+    ClaudeRules,
     CustomInstruction,
 }
 
@@ -36,6 +38,7 @@ impl RuleFileCategory {
             RuleFileCategory::AiderConventions => "Aider Conventions",
             RuleFileCategory::CodexMd => "Codex Rules",
             RuleFileCategory::GrokMd => "GROK.md",
+            RuleFileCategory::ClaudeRules => "Claude Rules",
             RuleFileCategory::CustomInstruction => "Instruction File",
         }
     }
@@ -68,6 +71,10 @@ pub struct InstructionFileReport {
     pub bytes: usize,
     pub tokens_cl100k: usize,
     pub tokens_o200k: usize,
+    /// Loaded into every session. When false, `load_condition` says when the
+    /// file is loaded instead.
+    pub always_loaded: bool,
+    pub load_condition: Option<String>,
     pub status: HealthStatus,
     pub recommendations: Vec<String>,
 }
@@ -77,8 +84,13 @@ pub struct WorkspaceContextSummary {
     pub files: Vec<InstructionFileReport>,
     pub total_files: usize,
     pub total_lines: usize,
+    /// Tokens of the files loaded into every session. Budgets, costs and
+    /// scores are based on this figure.
     pub total_tokens_cl100k: usize,
     pub total_tokens_o200k: usize,
+    /// Tokens of files loaded only under a condition (matching paths, skill
+    /// invocation, nested directories).
+    pub conditional_tokens_cl100k: usize,
     pub est_cost_per_100_turns: f64,
     pub pct_of_128k: f64,
     pub pct_of_200k: f64,
@@ -94,6 +106,9 @@ impl InstructionScanner {
     /// Covers the formats the tool claims to support (Cursor, Windsurf, Copilot,
     /// Gemini, Cline, Aider, Codex) rather than only AGENTS.md/CLAUDE.md.
     pub(crate) fn classify(file_name: &str, path_str: &str) -> Option<RuleFileCategory> {
+        if path_str.contains("/.claude/rules/") && file_name.ends_with(".md") {
+            return Some(RuleFileCategory::ClaudeRules);
+        }
         if file_name.eq_ignore_ascii_case("AGENTS.md") || file_name.eq_ignore_ascii_case("AGENT.md")
         {
             return Some(RuleFileCategory::AgentsMd);
@@ -139,6 +154,73 @@ impl InstructionScanner {
             return Some(RuleFileCategory::GrokMd);
         }
         None
+    }
+}
+
+impl InstructionScanner {
+    /// When a file is loaded, or `None` if it is loaded into every session.
+    ///
+    /// Counting conditional files as always-loaded overstated the budget and
+    /// penalised exactly the path-scoped layouts agents recommend.
+    pub(crate) fn load_condition(
+        category: &RuleFileCategory,
+        rel: &str,
+        content: &str,
+    ) -> Option<String> {
+        let fm = frontmatter::parse(content).unwrap_or_default();
+        let matching = |globs: Vec<String>| Some(format!("files matching {}", globs.join(", ")));
+        match category {
+            RuleFileCategory::SkillDoc => Some("when the skill is invoked".to_string()),
+            RuleFileCategory::CursorRules if rel.ends_with(".mdc") => {
+                let globs = fm.list("globs");
+                if fm.is_true("alwaysApply") {
+                    None
+                } else if !globs.is_empty() {
+                    matching(globs)
+                } else if fm.get("description").is_some_and(|d| !d.is_empty()) {
+                    Some("when the agent picks it by description".to_string())
+                } else {
+                    Some("only when @-mentioned".to_string())
+                }
+            }
+            RuleFileCategory::ClaudeRules => {
+                let paths = fm.list("paths");
+                if paths.is_empty() {
+                    None
+                } else {
+                    matching(paths)
+                }
+            }
+            RuleFileCategory::CopilotInstructions if rel.ends_with(".instructions.md") => {
+                let apply_to = fm.list("applyTo");
+                if apply_to.iter().any(|g| g == "**" || g == "**/*") {
+                    None
+                } else if apply_to.is_empty() {
+                    Some("only when attached manually (no applyTo)".to_string())
+                } else {
+                    matching(apply_to)
+                }
+            }
+            RuleFileCategory::WindsurfRules if rel.contains(".windsurf/rules/") => {
+                match fm.get("trigger") {
+                    None | Some("always_on") => None,
+                    Some("glob") => matching(fm.list("globs")),
+                    Some(other) => Some(format!("trigger: {}", other)),
+                }
+            }
+            // Root memory files load at startup; nested ones only when the
+            // agent works inside their directory.
+            RuleFileCategory::ClaudeMd | RuleFileCategory::AgentsMd => {
+                let parent = Path::new(rel)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string());
+                match parent.as_deref() {
+                    None | Some("") | Some(".claude") => None,
+                    Some(dir) => Some(format!("when the agent works in {}/", dir)),
+                }
+            }
+            _ => None,
+        }
     }
 }
 
@@ -218,7 +300,10 @@ impl InstructionScanner {
                 recs.push("Context size is moderate (>1,500 tokens). Prune conversational filler or older changelog notes.".to_string());
             }
 
+            let load_condition = Self::load_condition(&cat, &rel, &content);
             files.push(InstructionFileReport {
+                always_loaded: load_condition.is_none(),
+                load_condition,
                 path,
                 relative_path: rel,
                 category: cat,
@@ -236,8 +321,21 @@ impl InstructionScanner {
 
         let total_files = files.len();
         let total_lines: usize = files.iter().map(|f| f.lines).sum();
-        let total_tokens_cl100k: usize = files.iter().map(|f| f.tokens_cl100k).sum();
-        let total_tokens_o200k: usize = files.iter().map(|f| f.tokens_o200k).sum();
+        let total_tokens_cl100k: usize = files
+            .iter()
+            .filter(|f| f.always_loaded)
+            .map(|f| f.tokens_cl100k)
+            .sum();
+        let total_tokens_o200k: usize = files
+            .iter()
+            .filter(|f| f.always_loaded)
+            .map(|f| f.tokens_o200k)
+            .sum();
+        let conditional_tokens_cl100k: usize = files
+            .iter()
+            .filter(|f| !f.always_loaded)
+            .map(|f| f.tokens_cl100k)
+            .sum();
         let warnings_count = files
             .iter()
             .filter(|f| matches!(f.status, HealthStatus::Warning))
@@ -257,6 +355,7 @@ impl InstructionScanner {
             total_lines,
             total_tokens_cl100k,
             total_tokens_o200k,
+            conditional_tokens_cl100k,
             est_cost_per_100_turns,
             pct_of_128k,
             pct_of_200k,
@@ -309,6 +408,85 @@ mod tests {
         );
         // The same extension outside the rules directory is not a rule file.
         assert!(InstructionScanner::classify("style.md", "/repo/docs/style.md").is_none());
+    }
+
+    #[test]
+    fn test_load_conditions() {
+        use RuleFileCategory::*;
+        let cond =
+            |cat, rel: &str, content: &str| InstructionScanner::load_condition(&cat, rel, content);
+
+        assert_eq!(
+            cond(
+                CursorRules,
+                ".cursor/rules/a.mdc",
+                "---\nalwaysApply: true\n---\nx"
+            ),
+            None
+        );
+        assert_eq!(
+            cond(
+                CursorRules,
+                ".cursor/rules/a.mdc",
+                "---\nglobs: \"*.ts, *.tsx\"\nalwaysApply: false\n---\nx"
+            ),
+            Some("files matching *.ts, *.tsx".to_string())
+        );
+        assert_eq!(
+            cond(ClaudeRules, ".claude/rules/style.md", "# always\n"),
+            None
+        );
+        assert_eq!(
+            cond(
+                ClaudeRules,
+                ".claude/rules/api.md",
+                "---\npaths:\n  - \"src/api/**\"\n---\n"
+            ),
+            Some("files matching src/api/**".to_string())
+        );
+        assert_eq!(cond(ClaudeMd, "CLAUDE.md", ""), None);
+        assert_eq!(cond(ClaudeMd, ".claude/CLAUDE.md", ""), None);
+        assert_eq!(
+            cond(ClaudeMd, "packages/api/CLAUDE.md", ""),
+            Some("when the agent works in packages/api/".to_string())
+        );
+        assert!(cond(SkillDoc, ".claude/skills/x/SKILL.md", "").is_some());
+        assert_eq!(
+            cond(
+                CopilotInstructions,
+                ".github/instructions/all.instructions.md",
+                "---\napplyTo: \"**\"\n---\n"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_conditional_files_do_not_count_toward_the_always_loaded_total() {
+        let dir = std::env::temp_dir().join(format!("agentprof_scan_cond_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".claude/rules")).unwrap();
+        fs::write(dir.join("CLAUDE.md"), "# Rules\n- Use tabs.\n").unwrap();
+        fs::write(
+            dir.join(".claude/rules/api.md"),
+            format!(
+                "---\npaths:\n  - \"src/api/**\"\n---\n{}",
+                "API rule.\n".repeat(50)
+            ),
+        )
+        .unwrap();
+
+        let summary = InstructionScanner::scan_workspace(&dir).unwrap();
+        assert_eq!(summary.total_files, 2);
+        let always: usize = summary
+            .files
+            .iter()
+            .filter(|f| f.always_loaded)
+            .map(|f| f.tokens_cl100k)
+            .sum();
+        assert_eq!(summary.total_tokens_cl100k, always);
+        assert!(summary.conditional_tokens_cl100k > summary.total_tokens_cl100k);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

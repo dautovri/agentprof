@@ -32,6 +32,9 @@ pub struct AgentConfigFile {
     pub tokens: usize,
     pub bytes: usize,
     pub is_global: bool,
+    /// Sent to the model. Settings and config JSON (permissions, MCP
+    /// definitions) configure the agent but are never part of the prompt.
+    pub loaded_into_context: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,14 +67,15 @@ pub struct AgentPlatformProfiler;
 
 impl AgentPlatformProfiler {
     pub fn profile_all(workspace_root: &Path) -> Result<Vec<AgentPlatformProfile>> {
-        let opencode = Self::profile_opencode(workspace_root)?;
-        let claude = Self::profile_claude(workspace_root)?;
-        let grok = Self::profile_grok(workspace_root)?;
-        Ok(vec![opencode, claude, grok])
+        let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
+        Ok(vec![
+            Self::profile_opencode(workspace_root, &home)?,
+            Self::profile_claude(workspace_root, &home)?,
+            Self::profile_grok(workspace_root, &home)?,
+        ])
     }
 
-    pub fn profile_opencode(workspace: &Path) -> Result<AgentPlatformProfile> {
-        let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
+    pub fn profile_opencode(workspace: &Path, home: &Path) -> Result<AgentPlatformProfile> {
         let global_dir = home.join(".config/opencode");
         let is_installed = global_dir.exists()
             || which::which("opencode").is_ok()
@@ -105,6 +109,7 @@ impl AgentPlatformProfiler {
                         tokens,
                         bytes: c.len(),
                         is_global: true,
+                        loaded_into_context: f.ends_with(".md"),
                     });
 
                     // Check for MCP servers in json
@@ -114,8 +119,13 @@ impl AgentPlatformProfiler {
                         && let Some(mcp) = val.get("mcpServers").or_else(|| val.get("mcp"))
                         && let Some(obj) = mcp.as_object()
                     {
-                        for key in obj.keys() {
-                            if !detected_mcp_servers.contains(key) {
+                        for (key, server) in obj {
+                            // A disabled server injects nothing.
+                            let enabled = server
+                                .get("enabled")
+                                .and_then(|e| e.as_bool())
+                                .unwrap_or(true);
+                            if enabled && !detected_mcp_servers.contains(key) {
                                 detected_mcp_servers.push(key.clone());
                             }
                         }
@@ -163,12 +173,17 @@ impl AgentPlatformProfiler {
                 tokens: TokenCounter::count_cl100k(&c),
                 bytes: c.len(),
                 is_global: false,
+                loaded_into_context: true,
             });
         }
 
         let total_skills_tokens: usize = skills.iter().map(|s| s.tokens).sum();
         let total_skills_count = skills.len();
-        let total_config_tokens: usize = config_files.iter().map(|c| c.tokens).sum();
+        let total_config_tokens: usize = config_files
+            .iter()
+            .filter(|c| c.loaded_into_context)
+            .map(|c| c.tokens)
+            .sum();
         let total_fixed_instruction_tokens = total_config_tokens;
 
         let context_window = 128_000;
@@ -218,8 +233,7 @@ impl AgentPlatformProfiler {
         })
     }
 
-    pub fn profile_claude(workspace: &Path) -> Result<AgentPlatformProfile> {
-        let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
+    pub fn profile_claude(workspace: &Path, home: &Path) -> Result<AgentPlatformProfile> {
         let global_dir = home.join(".claude");
         let is_installed = global_dir.exists()
             || which::which("claude").is_ok()
@@ -253,6 +267,7 @@ impl AgentPlatformProfiler {
                         tokens: TokenCounter::count_cl100k(&c),
                         bytes: c.len(),
                         is_global: true,
+                        loaded_into_context: f.ends_with(".md"),
                     });
                 }
             }
@@ -319,13 +334,18 @@ impl AgentPlatformProfiler {
                     tokens: TokenCounter::count_cl100k(&c),
                     bytes: c.len(),
                     is_global: false,
+                    loaded_into_context: rel.ends_with(".md"),
                 });
             }
         }
 
         let total_skills_tokens: usize = skills.iter().map(|s| s.tokens).sum();
         let total_skills_count = skills.len();
-        let total_config_tokens: usize = config_files.iter().map(|c| c.tokens).sum();
+        let total_config_tokens: usize = config_files
+            .iter()
+            .filter(|c| c.loaded_into_context)
+            .map(|c| c.tokens)
+            .sum();
         let total_fixed_instruction_tokens = total_config_tokens;
 
         let context_window = 200_000;
@@ -375,8 +395,7 @@ impl AgentPlatformProfiler {
         })
     }
 
-    pub fn profile_grok(workspace: &Path) -> Result<AgentPlatformProfile> {
-        let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
+    pub fn profile_grok(workspace: &Path, home: &Path) -> Result<AgentPlatformProfile> {
         let global_dir = home.join(".grok");
         let is_installed = global_dir.exists()
             || which::which("grok").is_ok()
@@ -403,6 +422,7 @@ impl AgentPlatformProfiler {
                         tokens: TokenCounter::count_cl100k(&c),
                         bytes: c.len(),
                         is_global: true,
+                        loaded_into_context: f.ends_with(".md"),
                     });
                 }
             }
@@ -421,6 +441,7 @@ impl AgentPlatformProfiler {
                 tokens: TokenCounter::count_cl100k(&c),
                 bytes: c.len(),
                 is_global: false,
+                loaded_into_context: true,
             });
         }
 
@@ -436,10 +457,15 @@ impl AgentPlatformProfiler {
                 tokens: TokenCounter::count_cl100k(&c),
                 bytes: c.len(),
                 is_global: false,
+                loaded_into_context: true,
             });
         }
 
-        let total_config_tokens: usize = config_files.iter().map(|c| c.tokens).sum();
+        let total_config_tokens: usize = config_files
+            .iter()
+            .filter(|c| c.loaded_into_context)
+            .map(|c| c.tokens)
+            .sum();
         let total_fixed_instruction_tokens = total_config_tokens;
 
         let context_window = 128_000;
@@ -482,5 +508,36 @@ impl AgentPlatformProfiler {
             health_rating,
             recommendations,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: settings.json (permissions, hooks) was counted as prompt
+    /// tokens although it is never sent to the model.
+    #[test]
+    fn test_settings_files_are_not_counted_as_prompt_tokens() {
+        let dir = std::env::temp_dir().join(format!("agentprof_agent_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".claude")).unwrap();
+        fs::write(dir.join("CLAUDE.md"), "# Rules\n- Use tabs.\n").unwrap();
+        let big_settings = format!(
+            "{{\"permissions\": {{\"allow\": [{}]}}}}",
+            vec!["\"Bash(npm run test:*)\""; 400].join(",")
+        );
+        fs::write(dir.join(".claude/settings.json"), big_settings).unwrap();
+
+        let profile = AgentPlatformProfiler::profile_claude(&dir, &dir.join("home")).unwrap();
+        let prompt: usize = profile
+            .config_files
+            .iter()
+            .filter(|c| c.loaded_into_context)
+            .map(|c| c.tokens)
+            .sum();
+        assert_eq!(profile.total_fixed_instruction_tokens, prompt);
+        assert!(profile.total_fixed_instruction_tokens < 50);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

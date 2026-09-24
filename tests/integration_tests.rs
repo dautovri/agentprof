@@ -152,7 +152,8 @@ fn test_lint_reports_cross_file_contradiction() {
 #[test]
 fn test_lint_does_not_flag_agreeing_files() {
     let dir = workspace("lintagree");
-    let rules = "- Always use pnpm install for dependencies\n- Use @StateObject for owned view models\n";
+    let rules =
+        "- Always use pnpm install for dependencies\n- Use @StateObject for owned view models\n";
     fs::write(dir.join("AGENTS.md"), rules).unwrap();
     fs::write(dir.join("CLAUDE.md"), rules).unwrap();
 

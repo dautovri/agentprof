@@ -3,6 +3,7 @@ pub mod agent_wrapper;
 pub mod ci_generator;
 pub mod claude_permissions;
 pub mod fixer;
+pub mod frontmatter;
 pub mod jit_compiler;
 pub mod mcp_profiler;
 pub mod omz_profiler;

@@ -112,7 +112,7 @@ impl ReportGenerator {
                 _ => 0,
             },
             format!(
-                "`{}` tokens across {} instruction file(s)",
+                "`≈{}` always-loaded tokens across {} instruction file(s)",
                 ctx_tokens, context.total_files
             ),
         );
