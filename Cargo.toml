@@ -2,6 +2,7 @@
 name = "agentprof"
 version = "0.2.0"
 edition = "2024"
+rust-version = "1.88"
 authors = ["Ruslan Dautov <dautovri@gmail.com>"]
 description = "AI Agent Workspace Optimizer & Shell Startup Profiler"
 license = "MIT"
