@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(.env*)",
+      "Read(!.env*.example)",
+      "Read(!.env*.sample)",
+      "Read(!.env*.template)",
+      "Read(*.pem)",
+      "Read(*.key)",
+      "Read(*.p12)",
+      "Read(*.pfx)",
+      "Read(id_rsa)",
+      "Read(id_ecdsa)",
+      "Read(id_ed25519)",
+      "Read(credentials.json)",
+      "Read(service-account.json)",
+      "Read(.netrc)",
+      "Read(.npmrc)",
+      "Read(.pypirc)"
+    ]
+  }
+}

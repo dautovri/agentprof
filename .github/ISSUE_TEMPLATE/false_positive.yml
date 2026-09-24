@@ -1,0 +1,36 @@
+name: Wrong number or false positive
+description: A reported figure, score or finding does not match reality.
+labels: [accuracy]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        agentprof aims to report only what it has measured. If a number, a lint finding or a
+        "secret readable by Claude Code" result is wrong, this is the right place.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which command
+      options: [scan, report, context, lint, mcp, skills, history, bench, omz, agent, fix, compile, other]
+    validations:
+      required: true
+  - type: textarea
+    id: reported
+    attributes:
+      label: What agentprof reported
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What is actually true, and how you know
+      description: For example, the agent's own /context output, a vendor doc link, or a minimal file that reproduces it.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: agentprof version
+    validations:
+      required: true
