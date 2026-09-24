@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use owo_colors::OwoColorize;
 
-use crate::core::mcp_profiler::McpProfiler;
+use crate::core::mcp_profiler::{McpProfiler, ProbeOptions};
 use crate::ui::tables::TableRenderer;
 
 pub struct McpCommand;
@@ -13,6 +13,7 @@ impl McpCommand {
     pub fn execute(
         workspace_root: &Path,
         probe: bool,
+        trust_workspace: bool,
         probe_timeout: u64,
         json: bool,
     ) -> Result<()> {
@@ -26,8 +27,11 @@ impl McpCommand {
 
         let report = McpProfiler::profile_with_options(
             workspace_root,
-            probe,
-            Duration::from_secs(probe_timeout.max(1)),
+            ProbeOptions {
+                probe,
+                trust_workspace,
+                timeout: Duration::from_secs(probe_timeout.max(1)),
+            },
         )?;
 
         if json {

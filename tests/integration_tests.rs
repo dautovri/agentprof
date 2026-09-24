@@ -291,13 +291,46 @@ fn test_report_headline_equals_category_sum() {
     let out = run(&["report", dir.to_str().unwrap(), "--json"]);
     let value = assert_valid_json(&out, "report");
 
-    let sum: u64 = value["categories"]
+    let measured: Vec<&serde_json::Value> = value["categories"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|c| c["score"].as_u64().unwrap())
-        .sum();
-    assert_eq!(value["score"].as_u64().unwrap(), sum);
+        .filter(|c| c["measured"] == true)
+        .collect();
+    let points: u64 = measured.iter().map(|c| c["score"].as_u64().unwrap()).sum();
+    let max: u64 = measured.iter().map(|c| c["max"].as_u64().unwrap()).sum();
+    assert_eq!(value["points"].as_u64().unwrap(), points);
+    assert_eq!(value["max_points"].as_u64().unwrap(), max);
+    let expected = ((points as f64 / max as f64) * 100.0).round() as u64;
+    assert_eq!(value["score"].as_u64().unwrap(), expected);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// `--repo-only` must not depend on the machine: no shell benchmark, no MCP
+/// configs, the same score everywhere.
+#[test]
+fn test_report_repo_only_is_machine_independent() {
+    let dir = workspace("reportrepo");
+    fs::write(dir.join(".gitignore"), "target/\n").unwrap();
+    fs::write(dir.join("AGENTS.md"), "# Rules\n- Run cargo test.\n").unwrap();
+
+    let out = run(&["report", dir.to_str().unwrap(), "--repo-only", "--json"]);
+    let value = assert_valid_json(&out, "report");
+    assert_eq!(value["scope"], "repo_only");
+    assert_eq!(value["max_points"], 60);
+    assert_eq!(value["score"], 100, "{}", value);
+    let unmeasured: Vec<&str> = value["categories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["measured"] == false)
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        unmeasured,
+        vec!["Agent Shell Overhead", "MCP Tool Schema Load"]
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -426,9 +459,11 @@ fn test_global_path_flag_and_positional_both_work() {
 
 #[test]
 fn test_wrap_propagates_exit_code_and_env() {
-    let ok = run(&["wrap", "sh", "-c", "exit 0"]);
+    let ok = run(&["wrap", "sh", "-c", "printf child-output"]);
     assert!(ok.status.success());
-    assert!(stdout(&ok).contains("Flight Recorder Summary"));
+    // The summary goes to stderr; stdout carries only the child's output.
+    assert!(String::from_utf8_lossy(&ok.stderr).contains("Flight Recorder Summary"));
+    assert_eq!(stdout(&ok), "child-output");
 
     let failing = run(&["wrap", "sh", "-c", "exit 42"]);
     assert_eq!(

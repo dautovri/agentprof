@@ -335,10 +335,10 @@ impl TuiApp {
         let mut lines = vec![
             Line::from(Span::styled(
                 format!(
-                    "{} server(s) configured — {} measured, {} tokens/turn",
-                    m.total_servers,
+                    "{} server(s) enabled — {} measured, heaviest agent loads {} tokens/turn",
+                    m.enabled_servers,
                     m.measured_server_count,
-                    Formatters::format_tokens(m.measured_schema_tokens)
+                    Formatters::format_tokens(m.max_upfront_tokens)
                 ),
                 Style::default()
                     .fg(Color::Magenta)
@@ -346,10 +346,20 @@ impl TuiApp {
             )),
             Line::from(""),
         ];
+        for c in &m.clients {
+            lines.push(Line::from(format!(
+                "  {:<16} {:>8} tokens/turn  {}",
+                c.client,
+                Formatters::format_tokens(c.upfront_tokens),
+                c.loading
+            )));
+        }
+        lines.push(Line::from(""));
         for s in &m.servers {
             lines.push(Line::from(format!(
-                "  • {:<20} {:>8} tokens  {:<22} {}",
+                "  • {:<20} {:<14} {:>8} tokens  {:<22} {}",
                 s.name,
+                s.client,
                 s.schema_tokens
                     .map(Formatters::format_tokens)
                     .unwrap_or_else(|| "—".to_string()),
@@ -357,7 +367,7 @@ impl TuiApp {
                 s.scope
             )));
         }
-        if m.measured_server_count < m.total_servers {
+        if m.measured_server_count < m.enabled_servers {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "  Run `agentprof mcp --probe` to measure the unmeasured servers.",
@@ -432,19 +442,31 @@ impl TuiApp {
                 .unwrap_or_else(|| "—".to_string())
         };
         lines.push(Line::from(format!(
-            "  • Interactive login shell:      {}",
-            fmt(b.interactive_login_ms)
-        )));
-        lines.push(Line::from(format!(
-            "  • Non-interactive subshell:     {}",
+            "  • Bare spawn (-c):              {}",
             fmt(b.non_interactive_ms)
         )));
         lines.push(Line::from(format!(
-            "  • Avoidable tax per command:    {}",
-            fmt(b.latency_tax_ms)
+            "  • Login shell (-lc):            {}",
+            fmt(b.login_ms)
         )));
         lines.push(Line::from(format!(
-            "  • Projected cost of 50 calls:   {}",
+            "  • Interactive login (-lic):     {}",
+            fmt(b.interactive_login_ms)
+        )));
+        lines.push(Line::from(format!(
+            "  • Claude Code snapshot replay:  {}",
+            fmt(b.claude_snapshot.as_ref().map(|s| s.replay_ms))
+        )));
+        lines.push(Line::from(format!(
+            "  • Per-command agent overhead:   {} {}",
+            fmt(b.per_command_tax_ms),
+            b.per_command_tax_source
+                .as_deref()
+                .map(|s| format!("({})", s))
+                .unwrap_or_default()
+        )));
+        lines.push(Line::from(format!(
+            "  • Across 50 commands:           {}",
             b.estimated_50_tool_calls_sec
                 .map(|s| format!("+{:.1}s", s))
                 .unwrap_or_else(|| "—".to_string())

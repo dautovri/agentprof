@@ -52,11 +52,19 @@ impl ScanCommand {
         println!("{}", "═".repeat(78).dimmed());
 
         let mut rec_count = 0;
-        if !bench_result.has_agent_fast_path {
+        if let Some(tax) = bench_result.per_command_tax_ms
+            && tax > 80.0
+            && !bench_result.has_agent_fast_path
+        {
             rec_count += 1;
             println!(
-                "  [{}] Add subshell fast-path guard: `agentprof fix --shell`",
-                rec_count
+                "  [{}] Agents pay {:.0}ms of shell setup per command ({}). Trim your rc/profile, or try the opt-in guard: `agentprof fix --shell`",
+                rec_count,
+                tax,
+                bench_result
+                    .per_command_tax_source
+                    .as_deref()
+                    .unwrap_or("measured")
             );
         }
         if workspace_audit.total_exposed_secrets > 0 {
@@ -80,7 +88,7 @@ impl ScanCommand {
                 rec_count
             );
         }
-        if mcp_report.measured_schema_tokens > 5000 {
+        if mcp_report.max_upfront_tokens > 5000 {
             rec_count += 1;
             println!(
                 "  [{}] Profile & prune heavy MCP tool schemas: `agentprof mcp`",

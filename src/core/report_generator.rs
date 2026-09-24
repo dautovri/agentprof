@@ -8,13 +8,16 @@ use crate::core::scanner::{InstructionScanner, WorkspaceContextSummary};
 use crate::core::shell_bench::{ShellBenchmarkResult, ShellBenchmarker};
 use crate::core::workspace_guard::{WorkspaceAuditReport, WorkspaceGuard};
 
-/// A single scored dimension. Each category is computed independently and the
-/// total is their sum, so a category score and the headline can never disagree.
+/// A single scored dimension.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CategoryScore {
     pub name: String,
     pub score: usize,
     pub max: usize,
+    /// False when the category could not be measured (or was left out on
+    /// purpose). It then does not count toward the total, instead of silently
+    /// earning full marks.
+    pub measured: bool,
     pub detail: String,
 }
 
@@ -24,15 +27,41 @@ impl CategoryScore {
             name: name.to_string(),
             score: max.saturating_sub(deductions),
             max,
+            measured: true,
+            detail,
+        }
+    }
+
+    fn not_measured(name: &str, max: usize, detail: String) -> Self {
+        CategoryScore {
+            name: name.to_string(),
+            score: 0,
+            max,
+            measured: false,
             detail,
         }
     }
 }
 
+/// Which categories a health score covers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScoreScope {
+    /// Workspace plus this machine (shell, MCP servers).
+    Full,
+    /// Only what is committed to the repository, so the result is the same
+    /// on every machine. Use this in CI.
+    RepoOnly,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceHealthScore {
+    /// 0–100: points earned as a share of the measured categories' maximum.
     pub score: usize,
     pub max_score: usize,
+    pub points: usize,
+    pub max_points: usize,
+    pub scope: ScoreScope,
     pub grade: &'static str,
     pub categories: Vec<CategoryScore>,
     pub subshell_latency_score: usize,
@@ -46,12 +75,18 @@ pub struct WorkspaceHealthScore {
 pub struct ReportGenerator;
 
 impl ReportGenerator {
-    pub fn calculate_health_score(workspace_root: &Path) -> Result<WorkspaceHealthScore> {
+    pub fn calculate_health_score(
+        workspace_root: &Path,
+        scope: ScoreScope,
+    ) -> Result<WorkspaceHealthScore> {
         let context = InstructionScanner::scan_workspace(workspace_root)?;
-        let bench = ShellBenchmarker::run_benchmark(3)?;
         let guard = WorkspaceGuard::audit(workspace_root)?;
+        if scope == ScoreScope::RepoOnly {
+            return Ok(Self::score(&context, None, &guard, None));
+        }
+        let bench = ShellBenchmarker::run_benchmark(3)?;
         let mcp = McpProfiler::profile(workspace_root)?;
-        Ok(Self::score_parts(&context, &bench, &guard, &mcp))
+        Ok(Self::score(&context, Some(&bench), &guard, Some(&mcp)))
     }
 
     /// Scores already-collected reports.
@@ -64,42 +99,60 @@ impl ReportGenerator {
         guard: &WorkspaceAuditReport,
         mcp: &McpProfileReport,
     ) -> WorkspaceHealthScore {
-        // 1. Subshell latency (20). Scored on the avoidable tax, not on total
-        //    startup time, which includes work every shell must do.
-        let subshell = match bench.latency_tax_ms {
-            Some(tax) => {
-                let mut deduction = match tax {
-                    t if t > 250.0 => 14,
-                    t if t > 80.0 => 8,
-                    t if t > 25.0 => 3,
-                    _ => 0,
-                };
-                if !bench.has_agent_fast_path && tax > 80.0 {
-                    deduction += 6;
-                }
-                CategoryScore::new(
-                    "Subshell Spawn Latency",
-                    20,
-                    deduction,
-                    format!(
-                        "`{:.1}ms` avoidable tax per command ({})",
-                        tax, bench.shell_name
-                    ),
-                )
+        Self::score(context, Some(bench), guard, Some(mcp))
+    }
+
+    /// `bench` and `mcp` are `None` in repo-only mode.
+    fn score(
+        context: &WorkspaceContextSummary,
+        bench: Option<&ShellBenchmarkResult>,
+        guard: &WorkspaceAuditReport,
+        mcp: Option<&McpProfileReport>,
+    ) -> WorkspaceHealthScore {
+        const MACHINE_ONLY: &str = "not scored with --repo-only (depends on the machine)";
+
+        // 1. Per-command shell cost (20), on what agents actually run: Claude
+        //    Code's snapshot replay or a login shell, whichever costs more.
+        let subshell = match bench {
+            None => {
+                CategoryScore::not_measured("Agent Shell Overhead", 20, MACHINE_ONLY.to_string())
             }
-            None => CategoryScore {
-                name: "Subshell Spawn Latency".to_string(),
-                score: 20,
-                max: 20,
-                detail: bench
-                    .error
-                    .clone()
-                    .unwrap_or_else(|| "not measured".to_string()),
+            Some(bench) => match bench.per_command_tax_ms {
+                Some(tax) => {
+                    let deduction = match tax {
+                        t if t > 250.0 => 14,
+                        t if t > 80.0 => 8,
+                        t if t > 25.0 => 3,
+                        _ => 0,
+                    };
+                    CategoryScore::new(
+                        "Agent Shell Overhead",
+                        20,
+                        deduction,
+                        format!(
+                            "`{:.1}ms` per command ({}, {})",
+                            tax,
+                            bench
+                                .per_command_tax_source
+                                .as_deref()
+                                .unwrap_or("measured"),
+                            bench.shell_name
+                        ),
+                    )
+                }
+                None => CategoryScore::not_measured(
+                    "Agent Shell Overhead",
+                    20,
+                    bench
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "not measured".to_string()),
+                ),
             },
         };
 
-        // 2. Context budget (20), scaled across the full range so a very large
-        //    instruction payload can actually reach zero.
+        // 2. Context budget (20), on the files loaded into every session,
+        //    scaled across the full range so a very large payload reaches zero.
         let ctx_tokens = context.total_tokens_cl100k;
         let context_score = CategoryScore::new(
             "Context & Token Budget",
@@ -145,74 +198,102 @@ impl ReportGenerator {
             ),
         );
 
-        // 5. MCP schema load (20). Previously displayed but never scored, so a
-        //    workspace paying 30k tokens per turn in tool schemas scored the same
-        //    as one with no MCP servers at all.
-        let mcp_detail = if mcp.measured_server_count == 0 {
-            format!(
-                "{} server(s) configured, none measured — run `agentprof mcp --probe`",
-                mcp.total_servers
-            )
-        } else {
-            format!(
-                "`{}` measured tokens across {} of {} server(s)",
-                mcp.measured_schema_tokens, mcp.measured_server_count, mcp.total_servers
-            )
-        };
-        let mcp_score = CategoryScore::new(
-            "MCP Tool Schema Load",
-            20,
-            if mcp.measured_server_count == 0 {
-                0
-            } else {
-                match mcp.measured_schema_tokens {
+        // 5. MCP load (20), on the largest per-turn load of any one agent after
+        //    deferred loading. Servers never measured are not guessed at.
+        let mcp_score = match mcp {
+            None => {
+                CategoryScore::not_measured("MCP Tool Schema Load", 20, MACHINE_ONLY.to_string())
+            }
+            Some(mcp) if mcp.enabled_servers == 0 => CategoryScore::new(
+                "MCP Tool Schema Load",
+                20,
+                0,
+                "no MCP servers enabled".to_string(),
+            ),
+            Some(mcp) if mcp.measured_server_count == 0 => CategoryScore::not_measured(
+                "MCP Tool Schema Load",
+                20,
+                format!(
+                    "{} server(s) enabled, none measured — run `agentprof mcp --probe`",
+                    mcp.enabled_servers
+                ),
+            ),
+            Some(mcp) => CategoryScore::new(
+                "MCP Tool Schema Load",
+                20,
+                match mcp.max_upfront_tokens {
                     t if t > 30_000 => 20,
                     t if t > 20_000 => 14,
                     t if t > 10_000 => 9,
                     t if t > 5_000 => 4,
                     _ => 0,
-                }
-            },
-            mcp_detail,
-        );
+                },
+                format!(
+                    "`{}` tokens per turn for the heaviest agent ({} of {} server(s) measured)",
+                    mcp.max_upfront_tokens, mcp.measured_server_count, mcp.enabled_servers
+                ),
+            ),
+        };
 
         let categories = vec![subshell, context_score, hygiene, security, mcp_score];
-        let max_score: usize = categories.iter().map(|c| c.max).sum();
-        let final_score: usize = categories.iter().map(|c| c.score).sum();
-
-        let pct = (final_score as f64 / max_score as f64) * 100.0;
-        let grade = if pct >= 90.0 {
-            "A (Optimal)"
-        } else if pct >= 80.0 {
-            "B (Good)"
-        } else if pct >= 70.0 {
-            "C (Needs Optimization)"
-        } else if pct >= 60.0 {
-            "D (Significant Overhead)"
+        let points: usize = categories
+            .iter()
+            .filter(|c| c.measured)
+            .map(|c| c.score)
+            .sum();
+        let max_points: usize = categories
+            .iter()
+            .filter(|c| c.measured)
+            .map(|c| c.max)
+            .sum();
+        let score = if max_points == 0 {
+            100
         } else {
-            "F (Critical Bottlenecks)"
+            ((points as f64 / max_points as f64) * 100.0).round() as usize
+        };
+
+        let grade = match score {
+            90.. => "A (Optimal)",
+            80.. => "B (Good)",
+            70.. => "C (Needs Optimization)",
+            60.. => "D (Significant Overhead)",
+            _ => "F (Critical Bottlenecks)",
         };
 
         let mut rows = String::new();
         for c in &categories {
-            rows.push_str(&format!(
-                "| **{}** | {}/{} | {} |\n",
-                c.name, c.score, c.max, c.detail
-            ));
+            let value = if c.measured {
+                format!("{}/{}", c.score, c.max)
+            } else {
+                "n/a".to_string()
+            };
+            rows.push_str(&format!("| **{}** | {} | {} |\n", c.name, value, c.detail));
         }
+        let scope = if bench.is_none() {
+            ScoreScope::RepoOnly
+        } else {
+            ScoreScope::Full
+        };
+        let scope_note = match scope {
+            ScoreScope::RepoOnly => " · repository checks only",
+            ScoreScope::Full => "",
+        };
 
         let summary_markdown = format!(
-            "### 🤖 AI Agent Workspace Health: **{}/{}** ({})\n\n\
+            "### 🤖 AI Agent Workspace Health: **{}/100** ({})\n\n\
              | Category | Score | Status |\n\
              | :--- | :---: | :--- |\n\
              {}\n\
-             *Generated by [agentprof](https://github.com/dautovri/agentprof)*\n",
-            final_score, max_score, grade, rows
+             *{} of {} points across measured categories{} · generated by [agentprof](https://github.com/dautovri/agentprof)*\n",
+            score, grade, rows, points, max_points, scope_note
         );
 
         WorkspaceHealthScore {
-            score: final_score,
-            max_score,
+            score,
+            max_score: 100,
+            points,
+            max_points,
+            scope,
             grade,
             subshell_latency_score: categories[0].score,
             context_budget_score: categories[1].score,
@@ -242,10 +323,45 @@ mod tests {
     }
 
     #[test]
-    fn test_total_equals_sum_of_categories() {
-        let health = ReportGenerator::calculate_health_score(Path::new(".")).unwrap();
-        let sum: usize = health.categories.iter().map(|c| c.score).sum();
-        assert_eq!(health.score, sum, "headline score must equal category sum");
+    fn test_score_is_the_share_of_measured_points() {
+        let health =
+            ReportGenerator::calculate_health_score(Path::new("."), ScoreScope::Full).unwrap();
+        let points: usize = health
+            .categories
+            .iter()
+            .filter(|c| c.measured)
+            .map(|c| c.score)
+            .sum();
+        let max: usize = health
+            .categories
+            .iter()
+            .filter(|c| c.measured)
+            .map(|c| c.max)
+            .sum();
+        assert_eq!(health.points, points);
+        assert_eq!(health.max_points, max);
+        assert_eq!(
+            health.score,
+            ((points as f64 / max as f64) * 100.0).round() as usize
+        );
         assert_eq!(health.max_score, 100);
+    }
+
+    /// Regression: unmeasured categories used to earn full marks, so a CI
+    /// runner with no MCP config got a free 20/20.
+    #[test]
+    fn test_repo_only_leaves_machine_categories_out() {
+        let context = WorkspaceContextSummary::default();
+        let guard = WorkspaceAuditReport {
+            has_gitignore: true,
+            total_exposed_secrets: 1,
+            ..Default::default()
+        };
+        let health = ReportGenerator::score(&context, None, &guard, None);
+        assert_eq!(health.scope, ScoreScope::RepoOnly);
+        assert_eq!(health.max_points, 60);
+        assert_eq!(health.points, 50);
+        assert_eq!(health.score, 83);
+        assert!(health.summary_markdown.contains("n/a"));
     }
 }

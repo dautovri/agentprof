@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+
+use crate::core::shell_bench::ShellBenchmarker;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OmzPluginReport {
@@ -79,10 +80,13 @@ impl OmzProfiler {
         let zshrc_zwc = home.join(".zshrc.zwc");
         let bytecode_compiled = zshrc_zwc.exists();
 
-        // 1. Measure total interactive startup time
-        let start_total = Instant::now();
-        let _ = Command::new("zsh").args(["-lic", "true"]).output();
-        let total_shell_startup_ms = start_total.elapsed().as_secs_f64() * 1000.0;
+        // 1. Total interactive startup: the median of real spawns, like
+        //    `bench`. A single un-warmed run swung by 100ms+ between calls, and
+        //    a missing zsh used to be reported as a ~0ms startup.
+        let total_shell_startup_ms = which::which("zsh")
+            .ok()
+            .and_then(|zsh| ShellBenchmarker::measure(&zsh, &["-lic", "true"], 5).ok())
+            .unwrap_or(0.0);
 
         // 2. Profile individual plugins
         let plugin_reports = Self::profile_plugins(&plugins, &omz_path, &home);
@@ -134,15 +138,16 @@ impl OmzProfiler {
 
     fn extract_plugins(zshrc: &str) -> Vec<String> {
         let mut list = Vec::new();
-        // Regex for plugins=(git nvm docker ...)
-        let re = Regex::new(r"(?ms)plugins=\((.*?)\)").unwrap();
+        // `plugins=(git nvm docker ...)`, possibly spanning lines. A
+        // commented-out `# plugins=(...)` line is not the active list.
+        let re = Regex::new(r"(?m)^[ \t]*plugins=\(([^)]*)\)").unwrap();
         if let Some(caps) = re.captures(zshrc)
             && let Some(matched) = caps.get(1)
         {
-            for token in matched.as_str().split_whitespace() {
-                let clean = token.trim();
-                if !clean.is_empty() && !clean.starts_with('#') {
-                    list.push(clean.to_string());
+            for line in matched.as_str().lines() {
+                let line = line.split('#').next().unwrap_or("");
+                for token in line.split_whitespace() {
+                    list.push(token.to_string());
                 }
             }
         }
@@ -170,10 +175,14 @@ impl OmzProfiler {
         let default_omz = home.join(".oh-my-zsh");
         let omz_dir = omz_path.as_deref().unwrap_or(&default_omz);
 
+        let custom_dir = std::env::var("ZSH_CUSTOM")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| omz_dir.join("custom"));
+
         for plugin in plugins {
             // Find plugin path
-            let custom_plugin = home
-                .join(".oh-my-zsh/custom/plugins")
+            let custom_plugin = custom_dir
+                .join("plugins")
                 .join(plugin)
                 .join(format!("{}.plugin.zsh", plugin));
             let standard_plugin = omz_dir
@@ -192,7 +201,7 @@ impl OmzProfiler {
             // A plugin that cannot be found is not timed at all. The previous
             // code substituted invented constants (2.0 / 1.5 / 1.0 ms) that were
             // then displayed and summed as if they were measurements.
-            let latency_ms = target_path.and_then(|path| Self::time_source(&path));
+            let latency_ms = target_path.and_then(|path| Self::time_source(&path, omz_dir));
 
             let is_slow = latency_ms.is_some_and(|ms| ms > 25.0);
             let rec = match latency_ms {
@@ -237,11 +246,16 @@ impl OmzProfiler {
         reports
     }
 
-    /// Times a single sourced script in an isolated, rc-free shell.
-    fn time_source(path: &Path) -> Option<f64> {
+    /// Times sourcing one plugin in an rc-free shell that has Oh My Zsh's own
+    /// library loaded first. Plugins call into that library; sourcing one
+    /// without it timed an early error exit instead of the plugin's real work.
+    fn time_source(path: &Path, omz_dir: &Path) -> Option<f64> {
         let script = format!(
-            "zmodload zsh/datetime; start=$EPOCHREALTIME; source {} >/dev/null 2>&1; end=$EPOCHREALTIME; print $(( (end - start) * 1000 ))",
-            shell_quote(&path.display().to_string())
+            "ZSH={omz}; for f in $ZSH/lib/*.zsh(N); do source $f; done >/dev/null 2>&1; \
+             zmodload zsh/datetime; start=$EPOCHREALTIME; source {plugin} >/dev/null 2>&1; \
+             end=$EPOCHREALTIME; print $(( (end - start) * 1000 ))",
+            omz = shell_quote(&omz_dir.display().to_string()),
+            plugin = shell_quote(&path.display().to_string())
         );
         // -f skips rc files so the measurement isolates this script.
         let out = Command::new("zsh").args(["-fc", &script]).output().ok()?;
@@ -373,6 +387,15 @@ mod tests {
         assert_eq!(
             OmzProfiler::extract_plugins(rc),
             vec!["git".to_string(), "nvm".to_string(), "docker".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_extract_plugins_skips_comments_and_spans_lines() {
+        let rc = "# plugins=(old stale)\nplugins=(\n  git # vcs\n  docker\n)\n";
+        assert_eq!(
+            OmzProfiler::extract_plugins(rc),
+            vec!["git".to_string(), "docker".to_string()]
         );
     }
 

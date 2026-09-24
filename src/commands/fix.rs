@@ -80,7 +80,10 @@ impl FixCommand {
         if run_shell && !dry_run && actions.iter().any(|a| a.outcome == FixOutcome::Created) {
             println!(
                 "\n{}",
-                "Note: the shell guard is opt-in. It only activates when AGENTPROF_FAST_PATH=1 is set (as `agentprof wrap` does)."
+                "Note: the shell guard is opt-in. It only activates when AGENTPROF_FAST_PATH=1 is set \
+                 (as `agentprof wrap <agent>` does). Shells started that way skip the rest of your rc \
+                 file and keep only PATH, so your aliases, functions and other exports are not \
+                 available to the agent. Re-run `agentprof fix --shell` to refresh the PATH snapshot."
                     .dimmed()
             );
         }

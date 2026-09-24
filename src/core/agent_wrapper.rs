@@ -16,20 +16,23 @@ impl AgentWrapper {
 
         let guard_installed = ShellBenchmarker::check_for_agent_guard();
 
-        println!(
+        // agentprof's own output goes to stderr so the wrapped program's stdout
+        // stays clean for pipes and redirects.
+
+        eprintln!(
             "{}",
             "⚡ [agentprof] Wrapping agent session...".bold().cyan()
         );
-        println!("  • Program:  {}", program.bold());
-        println!("  • Injected: AGENTPROF_FAST_PATH=1, AGENTPROF_ACTIVE=1");
+        eprintln!("  • Program:  {}", program.bold());
+        eprintln!("  • Injected: AGENTPROF_FAST_PATH=1, AGENTPROF_ACTIVE=1");
         if !guard_installed {
-            println!(
+            eprintln!(
                 "  {}",
                 "• No fast-path guard found in your shell rc — the variables are exported but nothing consumes them yet. Run `agentprof fix --shell`."
                     .yellow()
             );
         }
-        println!();
+        eprintln!();
 
         let start_time = Instant::now();
 
@@ -60,10 +63,10 @@ impl AgentWrapper {
             }
         });
 
-        println!("\n{}", "═".repeat(78).dimmed());
-        println!("{}", "🛫 [agentprof] Flight Recorder Summary".bold().cyan());
-        println!("  • Total Session Duration: {:.1}s", duration.as_secs_f64());
-        println!(
+        eprintln!("\n{}", "═".repeat(78).dimmed());
+        eprintln!("{}", "🛫 [agentprof] Flight Recorder Summary".bold().cyan());
+        eprintln!("  • Total Session Duration: {:.1}s", duration.as_secs_f64());
+        eprintln!(
             "  • Exit Status:            {}",
             if exit_code == 0 {
                 "✅ Clean exit (0)".green().to_string()
@@ -75,10 +78,10 @@ impl AgentWrapper {
         // The previous build printed a fixed "Saved ~15-30s via agent fast-path"
         // on every run, regardless of whether a guard existed or how long the
         // session was. Report only what is actually known.
-        println!(
+        eprintln!(
             "  • Shell Fast-Path:        {}",
             if guard_installed {
-                "active for subshells started by this session"
+                "active: shells this session starts skip your rc file (PATH restored from snapshot)"
                     .green()
                     .to_string()
             } else {
@@ -87,7 +90,7 @@ impl AgentWrapper {
                     .to_string()
             }
         );
-        println!("{}", "═".repeat(78).dimmed());
+        eprintln!("{}", "═".repeat(78).dimmed());
 
         Ok(exit_code)
     }

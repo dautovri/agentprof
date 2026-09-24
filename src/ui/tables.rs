@@ -47,11 +47,15 @@ impl TableRenderer {
 
         for c in &health.categories {
             let ratio = (c.score * 100) / c.max.max(1);
-            let score_cell = Cell::new(format!("{}/{}", c.score, c.max)).fg(match ratio {
-                80..=100 => Color::Green,
-                50..=79 => Color::Yellow,
-                _ => Color::Red,
-            });
+            let score_cell = if c.measured {
+                Cell::new(format!("{}/{}", c.score, c.max)).fg(match ratio {
+                    80..=100 => Color::Green,
+                    50..=79 => Color::Yellow,
+                    _ => Color::Red,
+                })
+            } else {
+                Cell::new("n/a").fg(Color::DarkGrey)
+            };
             table.add_row(vec![
                 Cell::new(&c.name),
                 score_cell,
@@ -61,7 +65,16 @@ impl TableRenderer {
         println!("{table}");
         println!(
             "{}",
-            "Use `--markdown` for a PR comment, or `--fail-under <score>` to gate CI.".dimmed()
+            format!(
+                "{} of {} points across measured categories; n/a categories are left out.",
+                health.points, health.max_points
+            )
+            .dimmed()
+        );
+        println!(
+            "{}",
+            "Use `--markdown` for a PR comment, `--fail-under <score>` to gate CI, `--repo-only` for machine-independent results."
+                .dimmed()
         );
     }
 
@@ -89,6 +102,7 @@ impl TableRenderer {
             .set_content_arrangement(ContentArrangement::Dynamic)
             .set_header(vec![
                 Cell::new("MCP Server").fg(Color::Cyan),
+                Cell::new("Agent").fg(Color::Cyan),
                 Cell::new("Scope").fg(Color::Cyan),
                 Cell::new("Tools").fg(Color::Cyan),
                 Cell::new("Schema Tokens").fg(Color::Cyan),
@@ -105,6 +119,7 @@ impl TableRenderer {
             let dash = "—".to_string();
             table.add_row(vec![
                 Cell::new(&s.name),
+                Cell::new(&s.client),
                 Cell::new(&s.scope),
                 Cell::new(
                     s.tool_count
@@ -123,21 +138,31 @@ impl TableRenderer {
         println!("{table}");
 
         if report.measured_server_count > 0 {
+            for c in &report.clients {
+                println!(
+                    "  {:<16} {} tokens per turn {}",
+                    c.client.bold(),
+                    Formatters::format_tokens(c.upfront_tokens).bold().yellow(),
+                    format!(
+                        "({}; {} of {} server(s) measured)",
+                        c.loading, c.measured_servers, c.enabled_servers
+                    )
+                    .dimmed()
+                );
+            }
             println!(
-                "Measured Schema Load: {} tokens across {} of {} servers ({:.1}% of a 128k context)",
-                Formatters::format_tokens(report.measured_schema_tokens)
+                "Heaviest agent: {} tokens per turn ({:.1}% of a 128k context)",
+                Formatters::format_tokens(report.max_upfront_tokens)
                     .bold()
                     .yellow(),
-                report.measured_server_count.bold(),
-                report.total_servers.bold(),
-                TokenCounter::context_percentage(report.measured_schema_tokens, 128_000)
+                TokenCounter::context_percentage(report.max_upfront_tokens, 128_000)
                     .bold()
                     .magenta()
             );
             println!(
-                "Cost of Measured Schemas: {} per 100 turns {}",
+                "Cost of that load: {} per 100 turns {}",
                 Formatters::format_currency(TokenCounter::estimate_cost_per_100_turns(
-                    report.measured_schema_tokens
+                    report.max_upfront_tokens
                 ))
                 .bold()
                 .green(),
@@ -151,16 +176,20 @@ impl TableRenderer {
             );
         }
 
-        let failed: Vec<&str> = report
+        for s in report
             .servers
             .iter()
-            .filter(|s| s.probe_error.is_some())
-            .map(|s| s.name.as_str())
-            .collect();
-        if !failed.is_empty() {
+            .filter(|s| s.measurement == crate::core::mcp_profiler::MeasurementSource::ProbeFailed)
+        {
             println!(
                 "{}",
-                format!("⚠️  Probe failed for: {}", failed.join(", ")).yellow()
+                format!(
+                    "⚠️  Probe failed for {} ({}): {}",
+                    s.name,
+                    s.client,
+                    s.probe_error.as_deref().unwrap_or("unknown error")
+                )
+                .yellow()
             );
         }
 
@@ -589,34 +618,50 @@ impl TableRenderer {
             return;
         }
 
-        let (Some(interactive), Some(non_interactive), Some(tax), Some(fifty)) = (
-            bench.interactive_login_ms,
-            bench.non_interactive_ms,
-            bench.latency_tax_ms,
-            bench.estimated_50_tool_calls_sec,
-        ) else {
-            println!("  {}", "⚠️  Benchmark did not complete.".yellow());
-            return;
+        let fmt = |v: Option<f64>| {
+            v.map(Formatters::format_ms)
+                .unwrap_or_else(|| "—".to_string())
         };
-
         println!(
-            "  • Interactive Login (`{} -lic`):     {}",
+            "  • Bare spawn (`{} -c`):              {}",
             bench.shell_name,
-            Formatters::format_ms(interactive).bold().yellow()
+            fmt(bench.non_interactive_ms).bold().green()
         );
         println!(
-            "  • Non-Interactive (`{} -c`):         {}",
+            "  • Login shell (`{} -lc`):            {}",
             bench.shell_name,
-            Formatters::format_ms(non_interactive).bold().green()
+            fmt(bench.login_ms).bold()
         );
         println!(
-            "  • Single-Command Latency Tax:        {}",
-            Formatters::format_ms(tax).bold().red()
+            "  • Interactive login (`{} -lic`):     {}",
+            bench.shell_name,
+            fmt(bench.interactive_login_ms).bold().yellow()
         );
-        println!(
-            "  • Agent Tool Latency Tax (50 calls): {}",
-            format!("+{:.1}s wasted", fifty).bold().red()
-        );
+        match &bench.claude_snapshot {
+            Some(snapshot) => println!(
+                "  • Claude Code snapshot replay:       {} ({} KB snapshot)",
+                Formatters::format_ms(snapshot.replay_ms).bold().yellow(),
+                snapshot.size_bytes / 1024
+            ),
+            None => println!(
+                "  • Claude Code snapshot replay:       {}",
+                "— (no snapshot in ~/.claude/shell-snapshots)".dimmed()
+            ),
+        }
+        if let (Some(tax), Some(source)) = (bench.per_command_tax_ms, &bench.per_command_tax_source)
+        {
+            println!(
+                "  • Per-command agent overhead:        {} {}",
+                Formatters::format_ms(tax).bold().red(),
+                format!("({})", source).dimmed()
+            );
+        }
+        if let Some(fifty) = bench.estimated_50_tool_calls_sec {
+            println!(
+                "  • Overhead across 50 commands:       {}",
+                format!("+{:.1}s", fifty).bold().red()
+            );
+        }
         println!(
             "  • Status Rating:                     {}",
             bench.rating.map(|r| r.badge()).unwrap_or("—")
@@ -626,7 +671,9 @@ impl TableRenderer {
             if bench.has_agent_fast_path {
                 "✅ Installed".green().to_string()
             } else {
-                "❌ Missing (run `agentprof fix --shell`)".red().to_string()
+                "not installed (optional: `agentprof fix --shell`)"
+                    .dimmed()
+                    .to_string()
             }
         );
         println!(

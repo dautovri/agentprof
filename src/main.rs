@@ -69,9 +69,10 @@ fn main() -> anyhow::Result<()> {
             path,
             markdown,
             fail_under,
+            repo_only,
         }) => {
             let path = resolve(path);
-            let code = ReportCommand::execute(&path, markdown, fail_under, json)?;
+            let code = ReportCommand::execute(&path, markdown, fail_under, repo_only, json)?;
             if code != 0 {
                 std::process::exit(code);
             }
@@ -83,10 +84,11 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Mcp {
             path,
             probe,
+            trust_workspace,
             probe_timeout,
         }) => {
             let path = resolve(path);
-            McpCommand::execute(&path, probe, probe_timeout, json)?;
+            McpCommand::execute(&path, probe, trust_workspace, probe_timeout, json)?;
         }
         Some(Commands::Skills { path }) => {
             let path = resolve(path);

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::core::report_generator::ReportGenerator;
+use crate::core::report_generator::{ReportGenerator, ScoreScope};
 
 pub struct ReportCommand;
 
@@ -11,9 +11,15 @@ impl ReportCommand {
         workspace_root: &Path,
         markdown: bool,
         fail_under: Option<usize>,
+        repo_only: bool,
         json: bool,
     ) -> Result<i32> {
-        let health = ReportGenerator::calculate_health_score(workspace_root)?;
+        let scope = if repo_only {
+            ScoreScope::RepoOnly
+        } else {
+            ScoreScope::Full
+        };
+        let health = ReportGenerator::calculate_health_score(workspace_root, scope)?;
 
         if json {
             println!("{}", serde_json::to_string_pretty(&health)?);

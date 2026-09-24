@@ -422,10 +422,24 @@ impl FixerEngine {
 
         let existing = fs::read_to_string(&rc_path)?;
         if existing.contains(FAST_PATH_SENTINEL) {
+            // The PATH snapshot goes stale as tools are installed or version
+            // managers switch; re-running the fix refreshes it.
+            if dry_run {
+                return Ok(FixAction {
+                    target: rc_path,
+                    outcome: FixOutcome::WouldChange,
+                    detail: "guard installed; would refresh its PATH snapshot".to_string(),
+                    backup: None,
+                });
+            }
+            let snapshot_path = Self::write_path_snapshot(&home, &shell_name)?;
             return Ok(FixAction {
                 target: rc_path,
-                outcome: FixOutcome::AlreadyApplied,
-                detail: "fast-path guard already installed".to_string(),
+                outcome: FixOutcome::Updated,
+                detail: format!(
+                    "guard already installed; PATH snapshot refreshed at {}",
+                    snapshot_path.display()
+                ),
                 backup: None,
             });
         }

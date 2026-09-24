@@ -90,6 +90,12 @@ pub enum Commands {
         /// Exit with code 1 if the health score is below this value (for CI gating)
         #[arg(long, value_name = "SCORE")]
         fail_under: Option<usize>,
+
+        /// Score only what is committed to the repository (instruction files,
+        /// secrets, ignore rules), so results are identical on every machine.
+        /// Use this in CI.
+        #[arg(long)]
+        repo_only: bool,
     },
 
     /// Profile specific AI agent platforms (OpenCode, Claude Code, Grok)
@@ -104,9 +110,15 @@ pub enum Commands {
         path: Option<PathBuf>,
 
         /// Start each server and read its real tool list over the MCP protocol.
-        /// This executes the commands in your MCP config.
+        /// This executes the commands in your own (user-level) MCP configs.
         #[arg(long)]
         probe: bool,
+
+        /// Also start servers defined by files inside the workspace (.mcp.json,
+        /// .cursor/mcp.json, .vscode/mcp.json, opencode.json). Only use this for
+        /// repositories you trust: it runs commands the repository specifies.
+        #[arg(long, requires = "probe")]
+        trust_workspace: bool,
 
         /// Per-server probe timeout in seconds
         #[arg(long, default_value_t = 10)]
