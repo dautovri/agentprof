@@ -130,13 +130,35 @@ fn test_lint_reports_cross_file_contradiction() {
     .unwrap();
     fs::write(dir.join("CLAUDE.md"), "Use @Observable for view models.\n").unwrap();
 
+    // A contradiction is an error, so lint fails the way linters do in CI...
     let out = run(&["lint", dir.to_str().unwrap(), "--json"]);
-    let value = assert_valid_json(&out, "lint");
+    assert_eq!(out.status.code(), Some(1), "lint must exit 1 on a conflict");
+    let value: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
     assert!(
         value["contradictions_found"].as_u64().unwrap() >= 1,
         "expected a cross-file contradiction, got {}",
         value
     );
+
+    // ...unless the caller opts out.
+    let out = run(&["lint", dir.to_str().unwrap(), "--fail-on", "never"]);
+    assert!(out.status.success());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Regression: identical files were reported as conflicting because
+/// "pnpm install" contains "npm install".
+#[test]
+fn test_lint_does_not_flag_agreeing_files() {
+    let dir = workspace("lintagree");
+    let rules = "- Always use pnpm install for dependencies\n- Use @StateObject for owned view models\n";
+    fs::write(dir.join("AGENTS.md"), rules).unwrap();
+    fs::write(dir.join("CLAUDE.md"), rules).unwrap();
+
+    let out = run(&["lint", dir.to_str().unwrap(), "--json"]);
+    let value = assert_valid_json(&out, "lint");
+    assert_eq!(value["contradictions_found"], 0, "{}", value);
 
     let _ = fs::remove_dir_all(&dir);
 }

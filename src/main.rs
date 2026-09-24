@@ -52,9 +52,12 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Compress { file, overwrite }) => {
             CompressCommand::execute(&file, overwrite)?;
         }
-        Some(Commands::Lint { path }) => {
+        Some(Commands::Lint { path, fail_on }) => {
             let path = resolve(path);
-            LintCommand::execute(&path, json)?;
+            let code = LintCommand::execute(&path, fail_on, json)?;
+            if code != 0 {
+                std::process::exit(code);
+            }
         }
         Some(Commands::Wrap { command }) => {
             let code = WrapCommand::execute(&command)?;

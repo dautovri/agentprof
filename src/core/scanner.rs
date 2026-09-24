@@ -18,6 +18,7 @@ pub enum RuleFileCategory {
     ClineRules,
     AiderConventions,
     CodexMd,
+    GrokMd,
     CustomInstruction,
 }
 
@@ -34,6 +35,7 @@ impl RuleFileCategory {
             RuleFileCategory::ClineRules => "Cline Rules",
             RuleFileCategory::AiderConventions => "Aider Conventions",
             RuleFileCategory::CodexMd => "Codex Rules",
+            RuleFileCategory::GrokMd => "GROK.md",
             RuleFileCategory::CustomInstruction => "Instruction File",
         }
     }
@@ -133,18 +135,23 @@ impl InstructionScanner {
         if file_name.eq_ignore_ascii_case("CODEX.md") {
             return Some(RuleFileCategory::CodexMd);
         }
+        if file_name.eq_ignore_ascii_case("GROK.md") {
+            return Some(RuleFileCategory::GrokMd);
+        }
         None
     }
 }
 
 impl InstructionScanner {
-    pub fn scan_workspace(root: &Path) -> Result<WorkspaceContextSummary> {
-        let mut files = Vec::new();
+    /// Instruction files under `root` as `(path, relative path, category)`,
+    /// sorted by relative path.
+    ///
+    /// Respects the repository's own ignore rules instead of a hardcoded skip
+    /// list, so vendored or generated instruction files under ignored paths are
+    /// not billed to the context budget. `scan`, `context` and `lint` all use
+    /// this walk, so they agree on which files exist.
+    pub(crate) fn instruction_files(root: &Path) -> Vec<(PathBuf, String, RuleFileCategory)> {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-
-        // Respect the repository's own ignore rules instead of a hardcoded skip
-        // list, so vendored or generated instruction files under ignored paths
-        // are not billed to the user's context budget.
         let walker = WalkBuilder::new(&canonical_root)
             .follow_links(false)
             .max_depth(Some(6))
@@ -157,25 +164,37 @@ impl InstructionScanner {
             .require_git(false)
             .build();
 
+        let mut out = Vec::new();
         for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path();
             if !entry.file_type().is_some_and(|t| t.is_file()) {
                 continue;
             }
-
             let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
                 continue;
             };
-
             let path_str = path.to_string_lossy();
             if path_str.contains("/.git/") || path_str.contains("/node_modules/") {
                 continue;
             }
-
             let Some(cat) = Self::classify(file_name, &path_str) else {
                 continue;
             };
-            let Ok(content) = fs::read_to_string(path) else {
+            let rel = path
+                .strip_prefix(&canonical_root)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| path.to_string_lossy().to_string());
+            out.push((path.to_path_buf(), rel, cat));
+        }
+        out.sort_by(|a, b| a.1.cmp(&b.1));
+        out
+    }
+
+    pub fn scan_workspace(root: &Path) -> Result<WorkspaceContextSummary> {
+        let mut files = Vec::new();
+
+        for (path, rel, cat) in Self::instruction_files(root) {
+            let Ok(content) = fs::read_to_string(&path) else {
                 continue;
             };
 
@@ -199,13 +218,8 @@ impl InstructionScanner {
                 recs.push("Context size is moderate (>1,500 tokens). Prune conversational filler or older changelog notes.".to_string());
             }
 
-            let rel = path
-                .strip_prefix(&canonical_root)
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| path.to_string_lossy().to_string());
-
             files.push(InstructionFileReport {
-                path: path.to_path_buf(),
+                path,
                 relative_path: rel,
                 category: cat,
                 lines,

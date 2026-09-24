@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use std::path::PathBuf;
 
@@ -65,6 +65,10 @@ pub enum Commands {
     Lint {
         /// Target directory
         path: Option<PathBuf>,
+
+        /// Exit with code 1 when an issue at or above this severity is found
+        #[arg(long, value_enum, default_value_t = FailOn::Error)]
+        fail_on: FailOn,
     },
 
     /// Wrap and accelerate an agent session with subshell fast-path injection
@@ -183,4 +187,15 @@ pub enum Commands {
         /// Target directory
         path: Option<PathBuf>,
     },
+}
+
+/// Severity threshold for a non-zero exit code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum FailOn {
+    /// Cross-file contradictions
+    Error,
+    /// Contradictions, vague and hedged rules
+    Warning,
+    /// Always exit 0
+    Never,
 }

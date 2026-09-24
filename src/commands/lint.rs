@@ -5,12 +5,14 @@ use comfy_table::{Cell, Color, ContentArrangement, Table};
 use owo_colors::OwoColorize;
 use std::path::Path;
 
-use crate::core::rule_linter::RuleLinter;
+use crate::cli::FailOn;
+use crate::core::rule_linter::{LintReport, LintSeverity, RuleLinter};
 
 pub struct LintCommand;
 
 impl LintCommand {
-    pub fn execute(workspace_root: &Path, json: bool) -> Result<()> {
+    /// Returns the process exit code: 1 when an issue reaches `fail_on`.
+    pub fn execute(workspace_root: &Path, fail_on: FailOn, json: bool) -> Result<i32> {
         if !json {
             println!(
                 "{}",
@@ -20,9 +22,11 @@ impl LintCommand {
 
         let report = RuleLinter::lint_workspace(workspace_root)?;
 
+        let code = Self::exit_code(&report, fail_on);
+
         if json {
             println!("{}", serde_json::to_string_pretty(&report)?);
-            return Ok(());
+            return Ok(code);
         }
 
         if report.issues.is_empty() {
@@ -32,7 +36,7 @@ impl LintCommand {
                     .green()
                     .bold()
             );
-            return Ok(());
+            return Ok(code);
         }
 
         println!(
@@ -56,15 +60,9 @@ impl LintCommand {
 
         for issue in &report.issues {
             let sev_cell = match issue.severity {
-                crate::core::rule_linter::LintSeverity::Error => {
-                    Cell::new("🚨 Conflict").fg(Color::Red)
-                }
-                crate::core::rule_linter::LintSeverity::Warning => {
-                    Cell::new("⚠️ Warning").fg(Color::Yellow)
-                }
-                crate::core::rule_linter::LintSeverity::Info => {
-                    Cell::new("ℹ️ Info").fg(Color::Blue)
-                }
+                LintSeverity::Error => Cell::new("🚨 Conflict").fg(Color::Red),
+                LintSeverity::Warning => Cell::new("⚠️ Warning").fg(Color::Yellow),
+                LintSeverity::Info => Cell::new("ℹ️ Info").fg(Color::Blue),
             };
 
             table.add_row(vec![
@@ -84,6 +82,18 @@ impl LintCommand {
             report.total_files_linted.bold()
         );
         println!();
-        Ok(())
+        Ok(code)
+    }
+
+    fn exit_code(report: &LintReport, fail_on: FailOn) -> i32 {
+        let threshold = match fail_on {
+            FailOn::Error => LintSeverity::Error,
+            FailOn::Warning => LintSeverity::Warning,
+            FailOn::Never => return 0,
+        };
+        match report.max_severity() {
+            Some(worst) if worst >= threshold => 1,
+            _ => 0,
+        }
     }
 }

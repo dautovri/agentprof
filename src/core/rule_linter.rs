@@ -1,26 +1,17 @@
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use walkdir::WalkDir;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+use crate::core::scanner::{InstructionScanner, RuleFileCategory};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum LintSeverity {
+    Info,
     Warning,
     Error,
-    Info,
-}
-
-impl LintSeverity {
-    #[allow(dead_code)]
-    pub fn badge(&self) -> &'static str {
-        match self {
-            LintSeverity::Warning => "⚠️ Warning",
-            LintSeverity::Error => "🚨 Conflict",
-            LintSeverity::Info => "ℹ️ Info",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,32 +32,140 @@ pub struct LintReport {
     pub contradictions_found: usize,
 }
 
-/// Mutually exclusive conventions that should not be mandated by two different
-/// instruction files at once.
-const CONTRADICTION_PAIRS: &[(&str, &str, &str)] = &[
+impl LintReport {
+    pub fn max_severity(&self) -> Option<LintSeverity> {
+        self.issues.iter().map(|i| i.severity).max()
+    }
+}
+
+/// A convention that can be prescribed by an instruction file.
+struct Term {
+    /// Lowercase spellings that name it.
+    spellings: &'static [&'static str],
+    /// Text that, directly after a spelling, means something else
+    /// (`unittest.mock` is routinely used with pytest).
+    not_followed_by: &'static [&'static str],
+}
+
+const fn term(spellings: &'static [&'static str]) -> Term {
+    Term {
+        spellings,
+        not_followed_by: &[],
+    }
+}
+
+/// Mutually exclusive conventions that should not be prescribed by two
+/// different instruction files at once.
+const CONTRADICTION_PAIRS: &[(Term, Term, &str)] = &[
     (
-        "ObservableObject",
-        "@Observable",
-        "SwiftUI state management conflict",
+        term(&["observableobject"]),
+        term(&["@observable"]),
+        "SwiftUI observation conflict",
     ),
-    ("@StateObject", "@State", "SwiftUI state ownership conflict"),
-    ("SwiftData", "CoreData", "Persistence framework conflict"),
     (
-        "NavigationView",
-        "NavigationStack",
+        term(&["swiftdata"]),
+        term(&["core data", "coredata"]),
+        "Persistence framework conflict",
+    ),
+    (
+        term(&["navigationview"]),
+        term(&["navigationstack"]),
         "SwiftUI navigation API conflict",
     ),
-    ("npm install", "pnpm install", "Package manager conflict"),
-    ("yarn add", "pnpm add", "Package manager conflict"),
-    ("styled-components", "tailwind", "Styling approach conflict"),
-    ("Redux", "Zustand", "State library conflict"),
-    ("unittest", "pytest", "Python test framework conflict"),
-    ("black", "ruff format", "Python formatter conflict"),
     (
-        "tabs for indentation",
-        "spaces for indentation",
+        term(&["npm install", "npm i", "npm ci"]),
+        term(&["pnpm install", "pnpm add", "pnpm i"]),
+        "Package manager conflict",
+    ),
+    (
+        term(&["npm install", "npm i", "npm ci"]),
+        term(&["yarn add", "yarn install"]),
+        "Package manager conflict",
+    ),
+    (
+        term(&["pnpm install", "pnpm add", "pnpm i"]),
+        term(&["yarn add", "yarn install"]),
+        "Package manager conflict",
+    ),
+    (
+        term(&["styled-components"]),
+        term(&["tailwind", "tailwindcss"]),
+        "Styling approach conflict",
+    ),
+    (
+        term(&["redux", "redux toolkit"]),
+        term(&["zustand"]),
+        "State library conflict",
+    ),
+    (
+        Term {
+            spellings: &["unittest"],
+            not_followed_by: &[".mock"],
+        },
+        term(&["pytest"]),
+        "Python test framework conflict",
+    ),
+    (
+        term(&["tabs for indentation"]),
+        term(&["spaces for indentation"]),
         "Indentation conflict",
     ),
+];
+
+/// Words that, earlier in the same clause, turn a mention into a rejection:
+/// "use @Observable instead of ObservableObject", "never run npm install".
+const NEGATION_CUES: &[&str] = &[
+    "not ",
+    "never",
+    "don't",
+    "dont ",
+    "do not",
+    "avoid",
+    "instead of",
+    "rather than",
+    "no longer",
+    "without",
+    "deprecated",
+    "legacy",
+    "ban ",
+    "forbid",
+    "stop using",
+];
+
+/// Cues that reject what follows them unless a target marker comes first:
+/// in "replace X with Y" and "migrate from X to Y", Y is the prescription.
+const SOURCE_TARGET_CUES: &[(&str, &[&str])] = &[
+    ("replace", &[" with ", " by "]),
+    ("migrate from", &[" to "]),
+    ("migrating from", &[" to "]),
+    ("migrated from", &[" to "]),
+    ("switch from", &[" to "]),
+    ("switched from", &[" to "]),
+    ("moving from", &[" to "]),
+];
+
+/// Words right after a mention that reject it: "ObservableObject is deprecated".
+const TRAILING_NEGATION_CUES: &[&str] = &[
+    "deprecated",
+    "is banned",
+    "is forbidden",
+    "not allowed",
+    "is discouraged",
+];
+
+/// Headings that make every mention in their section a rejection.
+const NEGATIVE_HEADING_CUES: &[&str] = &[
+    "don't",
+    "dont",
+    "do not",
+    "avoid",
+    "never",
+    "forbidden",
+    "banned",
+    "anti-pattern",
+    "antipattern",
+    "deprecated",
+    "legacy",
 ];
 
 pub struct RuleLinter;
@@ -77,56 +176,20 @@ impl RuleLinter {
         let mut files_scanned = 0;
         let mut file_contents = Vec::new();
 
-        let canonical_root = workspace_root
-            .canonicalize()
-            .unwrap_or_else(|_| workspace_root.to_path_buf());
-
-        for entry in WalkDir::new(&canonical_root)
-            .follow_links(false)
-            .max_depth(5)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            let path = entry.path();
-            if path.is_dir() {
+        // The same walk as `scan`/`context`: gitignore-aware, so the linter and
+        // the context budget agree on which instruction files exist. Skills are
+        // excluded because their bodies load only when invoked.
+        for (path, rel, category) in InstructionScanner::instruction_files(workspace_root) {
+            if matches!(category, RuleFileCategory::SkillDoc) {
                 continue;
             }
-
-            let file_name = match path.file_name().and_then(|s| s.to_str()) {
-                Some(name) => name,
-                None => continue,
-            };
-
-            let path_str = path.to_string_lossy();
-            if path_str.contains("/.git/")
-                || path_str.contains("/target/")
-                || path_str.contains("/node_modules/")
-            {
-                continue;
-            }
-
-            // Reuse the scanner's classification so the linter and the context
-            // budget agree on what counts as an instruction file.
-            let is_rule_file = !matches!(
-                crate::core::scanner::InstructionScanner::classify(file_name, &path_str),
-                None | Some(crate::core::scanner::RuleFileCategory::SkillDoc)
-            ) || file_name.eq_ignore_ascii_case("GROK.md");
-
-            if is_rule_file {
-                files_scanned += 1;
-                if let Ok(content) = fs::read_to_string(path) {
-                    let rel = path
-                        .strip_prefix(&canonical_root)
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_else(|_| path.to_string_lossy().to_string());
-
-                    Self::lint_single_file(&rel, &content, &mut issues);
-                    file_contents.push((rel, content));
-                }
+            files_scanned += 1;
+            if let Ok(content) = fs::read_to_string(&path) {
+                Self::lint_single_file(&rel, &content, &mut issues);
+                file_contents.push((rel, content));
             }
         }
 
-        // Cross-file contradiction check
         let contradictions_found =
             Self::check_cross_file_contradictions(&file_contents, &mut issues);
 
@@ -155,27 +218,46 @@ impl RuleLinter {
         "write production ready code",
     ];
 
+    /// Lines outside fenced code blocks, as `(line number, text)`. Rules quoted
+    /// inside examples are not the file's own instructions.
+    fn prose_lines(content: &str) -> Vec<(usize, &str)> {
+        let mut out = Vec::new();
+        let mut fence: Option<&str> = None;
+        for (i, line) in content.lines().enumerate() {
+            let trim = line.trim_start();
+            let marker = if trim.starts_with("```") {
+                Some("```")
+            } else if trim.starts_with("~~~") {
+                Some("~~~")
+            } else {
+                None
+            };
+            match (fence, marker) {
+                (None, Some(m)) => fence = Some(m),
+                (Some(open), Some(m)) if open == m => fence = None,
+                (None, None) => out.push((i + 1, line)),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// Strips list markers ("- ", "* ", "1. ", "2) ") and trailing punctuation.
+    fn normalize_directive(trim: &str) -> String {
+        trim.trim_start_matches(|c: char| {
+            c.is_ascii_digit() || matches!(c, '-' | '*' | '+' | '#' | '>' | '.' | ')' | ' ')
+        })
+        .trim_end_matches(['.', '!'])
+        .to_lowercase()
+    }
+
     fn lint_single_file(file: &str, content: &str, issues: &mut Vec<LintIssue>) {
-        let mut in_code_block = false;
         let mut seen_directives: HashMap<String, usize> = HashMap::new();
 
-        for (i, line) in content.lines().enumerate() {
-            let line_num = i + 1;
+        for (line_num, line) in Self::prose_lines(content) {
             let trim = line.trim();
-
-            if trim.starts_with("```") {
-                in_code_block = !in_code_block;
-                continue;
-            }
-            // Rules quoted inside examples are not the file's own instructions.
-            if in_code_block {
-                continue;
-            }
-
-            let normalized = trim
-                .trim_start_matches(['-', '*', '#', '>', '1', '2', '3', '.', ' '])
-                .trim_end_matches(['.', '!'])
-                .to_lowercase();
+            let normalized = Self::normalize_directive(trim);
+            let is_bullet = trim.starts_with('-') || trim.starts_with('*') || trim.starts_with('+');
 
             if Self::VAGUE_PHRASES.contains(&normalized.as_str()) {
                 issues.push(LintIssue {
@@ -191,9 +273,7 @@ impl RuleLinter {
                 });
             }
 
-            if (trim.starts_with('-') || trim.starts_with('*'))
-                && trim.split_whitespace().count() > 100
-            {
+            if is_bullet && trim.split_whitespace().count() > 100 {
                 issues.push(LintIssue {
                     file: file.to_string(),
                     line_number: line_num,
@@ -206,7 +286,7 @@ impl RuleLinter {
             }
 
             // Duplicated directives waste context and can conflict as the file drifts.
-            if normalized.len() > 25 && (trim.starts_with('-') || trim.starts_with('*')) {
+            if normalized.len() > 25 && is_bullet {
                 match seen_directives.get(&normalized) {
                     Some(&first_line) => {
                         issues.push(LintIssue {
@@ -225,7 +305,7 @@ impl RuleLinter {
             }
 
             // "Never X ... except sometimes X" reads as an unresolved conflict.
-            let lower = trim.to_lowercase();
+            let lower = normalized.as_str();
             if (lower.starts_with("always ") || lower.starts_with("never "))
                 && (lower.contains(" unless ") || lower.contains(" except when "))
             {
@@ -241,6 +321,86 @@ impl RuleLinter {
         }
     }
 
+    /// Byte offsets where `spelling` occurs in `line` as a whole word.
+    fn find_mentions(line: &str, spelling: &str, not_followed_by: &[&str]) -> Vec<usize> {
+        let is_word = |c: char| c.is_alphanumeric() || c == '_';
+        let mut out = Vec::new();
+        let mut from = 0;
+        while let Some(found) = line[from..].find(spelling) {
+            let start = from + found;
+            let end = start + spelling.len();
+            let before_ok = line[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !is_word(c) && c != '@');
+            let after = &line[end..];
+            let after_ok = after.chars().next().is_none_or(|c| !is_word(c))
+                && !not_followed_by.iter().any(|s| after.starts_with(s));
+            if before_ok && after_ok {
+                out.push(start);
+            }
+            from = end;
+        }
+        out
+    }
+
+    /// True when the words around a mention reject it rather than prescribe it.
+    fn is_negated(line: &str, start: usize, end: usize) -> bool {
+        // Only the current clause counts: in "never use npm; use pnpm" the
+        // "never" does not reach pnpm.
+        let clause_start = line[..start]
+            .rfind([';', '.', '!', '?', ',', ':', '('])
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let clause = &line[clause_start..start];
+        let clause = match clause.rfind(" but ") {
+            Some(i) => &clause[i + 5..],
+            None => clause,
+        };
+        for (cue, target_markers) in SOURCE_TARGET_CUES {
+            if let Some(i) = clause.rfind(cue) {
+                let after = &clause[i + cue.len()..];
+                return !target_markers.iter().any(|m| after.contains(m));
+            }
+        }
+        if NEGATION_CUES.iter().any(|cue| clause.contains(cue)) {
+            return true;
+        }
+        let rest = &line[end..];
+        let window = &rest[..rest
+            .char_indices()
+            .nth(30)
+            .map(|(i, _)| i)
+            .unwrap_or(rest.len())];
+        TRAILING_NEGATION_CUES
+            .iter()
+            .any(|cue| window.contains(cue))
+    }
+
+    /// First line on which a file prescribes (rather than rejects) the term.
+    fn prescribes(content: &str, term: &Term) -> Option<usize> {
+        let mut negative_section = false;
+        for (line_num, line) in Self::prose_lines(content) {
+            let lower = line.to_lowercase();
+            let trimmed = lower.trim_start();
+            if trimmed.starts_with('#') {
+                negative_section = NEGATIVE_HEADING_CUES.iter().any(|c| trimmed.contains(c));
+                continue;
+            }
+            if negative_section {
+                continue;
+            }
+            for spelling in term.spellings {
+                for start in Self::find_mentions(&lower, spelling, term.not_followed_by) {
+                    if !Self::is_negated(&lower, start, start + spelling.len()) {
+                        return Some(line_num);
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn check_cross_file_contradictions(
         files: &[(String, String)],
         issues: &mut Vec<LintIssue>,
@@ -250,26 +410,33 @@ impl RuleLinter {
             return 0;
         }
 
-        // Check pairs of files
-        for i in 0..files.len() {
-            for j in (i + 1)..files.len() {
-                let (f1, c1) = &files[i];
-                let (f2, c2) = &files[j];
-
-                // Contradiction patterns
-                for &(p1, p2, desc) in CONTRADICTION_PAIRS {
-                    if (c1.contains(p1) && c2.contains(p2)) || (c1.contains(p2) && c2.contains(p1))
-                    {
-                        count += 1;
-                        issues.push(LintIssue {
-                            file: format!("{} vs {}", f1, f2),
-                            line_number: 1,
-                            severity: LintSeverity::Error,
-                            code: "CROSS_FILE_CONFLICT".to_string(),
-                            message: format!("{}: '{}' mentions {} while '{}' mentions {}.", desc, f1, p1, f2, p2),
-                            suggested_fix: "Align instructions to use a single unified standard across all agent files.".to_string(),
-                        });
-                    }
+        for (i, (f1, c1)) in files.iter().enumerate() {
+            for (f2, c2) in files.iter().skip(i + 1) {
+                for (a, b, desc) in CONTRADICTION_PAIRS {
+                    let hit = match (Self::prescribes(c1, a), Self::prescribes(c2, b)) {
+                        (Some(l1), Some(l2)) => Some((l1, a, l2, b)),
+                        _ => match (Self::prescribes(c1, b), Self::prescribes(c2, a)) {
+                            (Some(l1), Some(l2)) => Some((l1, b, l2, a)),
+                            _ => None,
+                        },
+                    };
+                    let Some((l1, t1, l2, t2)) = hit else {
+                        continue;
+                    };
+                    count += 1;
+                    issues.push(LintIssue {
+                        file: format!("{} vs {}", f1, f2),
+                        line_number: l1,
+                        severity: LintSeverity::Error,
+                        code: "CROSS_FILE_CONFLICT".to_string(),
+                        message: format!(
+                            "{}: {}:{} prescribes '{}' while {}:{} prescribes '{}'.",
+                            desc, f1, l1, t1.spellings[0], f2, l2, t2.spellings[0]
+                        ),
+                        suggested_fix:
+                            "Align instructions to use a single unified standard across all agent files."
+                                .to_string(),
+                    });
                 }
             }
         }
@@ -287,6 +454,16 @@ mod tests {
         issues
     }
 
+    fn conflicts(a: &str, b: &str) -> Vec<LintIssue> {
+        let files = vec![
+            ("A.md".to_string(), a.to_string()),
+            ("B.md".to_string(), b.to_string()),
+        ];
+        let mut issues = Vec::new();
+        RuleLinter::check_cross_file_contradictions(&files, &mut issues);
+        issues
+    }
+
     #[test]
     fn test_vague_rule_is_flagged_with_list_markers() {
         let issues = lint("- Follow best practices.\n");
@@ -295,6 +472,12 @@ mod tests {
             "{:?}",
             issues
         );
+        let numbered = lint("4. Follow best practices\n");
+        assert!(
+            numbered.iter().any(|i| i.code == "VAGUE_RULE"),
+            "{:?}",
+            numbered
+        );
     }
 
     #[test]
@@ -302,6 +485,8 @@ mod tests {
         // A vague phrase shown as an example must not be linted as a real rule.
         let issues = lint("Example of what not to write:\n\n```\nwrite clean code\n```\n");
         assert!(issues.is_empty(), "{:?}", issues);
+        let tilde = lint("~~~\nwrite clean code\n~~~\n");
+        assert!(tilde.is_empty(), "{:?}", tilde);
     }
 
     #[test]
@@ -332,20 +517,76 @@ mod tests {
     }
 
     #[test]
-    fn test_cross_file_contradiction_detected() {
-        let files = vec![
-            (
-                "A.md".to_string(),
-                "Use ObservableObject for view models".to_string(),
-            ),
-            (
-                "B.md".to_string(),
-                "Use @Observable for view models".to_string(),
-            ),
-        ];
-        let mut issues = Vec::new();
-        let count = RuleLinter::check_cross_file_contradictions(&files, &mut issues);
-        assert_eq!(count, 1);
+    fn test_cross_file_contradiction_detected_with_line_numbers() {
+        let issues = conflicts(
+            "# Rules\nUse ObservableObject for view models",
+            "Use @Observable for view models",
+        );
+        assert_eq!(issues.len(), 1, "{:?}", issues);
         assert_eq!(issues[0].code, "CROSS_FILE_CONFLICT");
+        assert_eq!(issues[0].line_number, 2);
+        assert!(
+            issues[0].message.contains("A.md:2"),
+            "{}",
+            issues[0].message
+        );
+    }
+
+    /// Regression: two identical files were reported as conflicting because
+    /// "pnpm install" contains "npm install" and "@StateObject" contains "@State".
+    #[test]
+    fn test_agreeing_files_are_not_conflicts() {
+        let rules = "- Always use pnpm install for dependencies\n- Use @StateObject for owned view models\n";
+        assert!(
+            conflicts(rules, rules).is_empty(),
+            "{:?}",
+            conflicts(rules, rules)
+        );
+    }
+
+    #[test]
+    fn test_rejected_mentions_are_not_prescriptions() {
+        for rejection in [
+            "Use @Observable instead of ObservableObject.",
+            "Never use ObservableObject.",
+            "Avoid ObservableObject in new code",
+            "ObservableObject is deprecated here.",
+            "Replace ObservableObject with @Observable",
+        ] {
+            let issues = conflicts(rejection, "Use @Observable everywhere");
+            assert!(issues.is_empty(), "{:?} for {}", issues, rejection);
+        }
+        // In "migrate from X to Y" the target is prescribed, the source is not.
+        let issues = conflicts("Migrate from Redux to Zustand", "Use Redux Toolkit");
+        assert_eq!(issues.len(), 1, "{:?}", issues);
+        assert!(
+            issues[0].message.contains("'zustand'"),
+            "{}",
+            issues[0].message
+        );
+        // A negation in an earlier clause does not reach the next one.
+        let issues = conflicts(
+            "Never run npm install; always use pnpm install",
+            "Use npm install",
+        );
+        assert_eq!(issues.len(), 1, "{:?}", issues);
+    }
+
+    #[test]
+    fn test_negative_sections_do_not_prescribe() {
+        let issues = conflicts(
+            "## Don'ts\n- ObservableObject\n- NavigationView\n",
+            "Use @Observable and NavigationStack",
+        );
+        assert!(issues.is_empty(), "{:?}", issues);
+    }
+
+    #[test]
+    fn test_word_boundaries_and_exclusions() {
+        assert!(conflicts("Use tailwindcss", "Use styled-components").len() == 1);
+        // unittest.mock is routinely used with pytest.
+        assert!(conflicts("from unittest.mock import patch", "Run tests with pytest").is_empty());
+        // A mention inside another word is not a mention.
+        assert!(conflicts("Configure reduxjs-style stores", "Use zustand").is_empty());
     }
 }
