@@ -681,15 +681,21 @@ impl TableRenderer {
         println!("{}", "\n📁 Workspace Ignore & Security Guard".bold().cyan());
         println!("{}", "═".repeat(78).dimmed());
 
-        let claude_lbl = if audit.has_claudeignore {
-            "✅ Present".green().to_string()
+        let deny_lbl = if audit.claude_read_deny_rules > 0 {
+            format!(
+                "✅ {} Read rule(s) ({})",
+                audit.claude_read_deny_rules,
+                audit.claude_deny_rule_sources.join(", ")
+            )
+            .green()
+            .to_string()
         } else {
-            "❌ Missing".red().to_string()
+            "❌ none".red().to_string()
         };
         let cursor_lbl = if audit.has_cursorignore {
             "✅ Present".green().to_string()
         } else {
-            "❌ Missing".red().to_string()
+            "❌ Missing".yellow().to_string()
         };
         let git_lbl = if audit.has_gitignore {
             "✅ Present".green().to_string()
@@ -697,22 +703,29 @@ impl TableRenderer {
             "❌ Missing".yellow().to_string()
         };
 
-        println!("  • .claudeignore:  {}", claude_lbl);
-        println!("  • .cursorignore:  {}", cursor_lbl);
-        println!("  • .gitignore:     {}", git_lbl);
+        println!("  • Claude Code deny rules: {}", deny_lbl);
+        println!("  • .cursorignore:          {}", cursor_lbl);
+        println!("  • .gitignore:             {}", git_lbl);
+        if audit.has_claudeignore {
+            println!(
+                "  • .claudeignore:          {}",
+                "⚠️ present, but Claude Code never reads it".yellow()
+            );
+        }
 
         if !audit.secret_risks.is_empty() {
-            println!(
-                "\n{}",
-                "🚨 Exposed Secrets Accessible to Agent Search Tools:"
-                    .bold()
-                    .red()
-            );
+            println!("\n{}", "🔐 Secret Files:".bold());
             for s in &audit.secret_risks {
+                let status = if s.blocked_for_claude {
+                    "✅ blocked for Claude Code".green().to_string()
+                } else {
+                    "🚨 readable by Claude Code".red().to_string()
+                };
                 println!(
-                    "  • [{}] {} -> {}",
+                    "  • [{}] {} -> {} ({})",
                     s.risk_level,
                     s.relative_path.bold(),
+                    status,
                     s.description.dimmed()
                 );
             }
@@ -721,13 +734,13 @@ impl TableRenderer {
         if !audit.heavy_directories.is_empty() {
             println!(
                 "\n{}",
-                "Unignored Heavy Build / Cache Directories:".bold().yellow()
+                "Heavy Build / Dependency Directories:".bold().yellow()
             );
             for d in &audit.heavy_directories {
-                let status = if d.is_ignored_by_claude {
-                    "✅ Ignored"
+                let status = if d.is_ignored_by_git {
+                    "✅ gitignored"
                 } else {
-                    "❌ Unignored"
+                    "❌ not gitignored"
                 };
                 // The counter stops at a cap, so show "N+" rather than implying
                 // the directory holds exactly N files.

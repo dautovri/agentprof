@@ -1,6 +1,7 @@
 pub mod agent_platforms;
 pub mod agent_wrapper;
 pub mod ci_generator;
+pub mod claude_permissions;
 pub mod fixer;
 pub mod jit_compiler;
 pub mod mcp_profiler;

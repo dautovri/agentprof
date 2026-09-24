@@ -117,9 +117,10 @@ impl ReportGenerator {
             ),
         );
 
-        // 3. Workspace hygiene (20).
+        // 3. Workspace hygiene (20). Agent search tools skip gitignored paths,
+        //    so a build folder only costs anything when git does not ignore it.
         let mut hygiene_deduction = (guard.total_unignored_heavy_dirs * 6).min(15);
-        if !guard.has_claudeignore {
+        if !guard.has_gitignore {
             hygiene_deduction += 5;
         }
         let hygiene = CategoryScore::new(
@@ -127,18 +128,19 @@ impl ReportGenerator {
             20,
             hygiene_deduction,
             format!(
-                "`{}` unignored heavy build folder(s)",
+                "`{}` build/dependency folder(s) not in .gitignore",
                 guard.total_unignored_heavy_dirs
             ),
         );
 
-        // 4. Secrets (20).
+        // 4. Secrets (20). Only a Claude Code `Read` deny rule counts as
+        //    protection; `.claudeignore` is not read by any agent.
         let security = CategoryScore::new(
             "Secret & Security Guard",
             20,
             (guard.total_exposed_secrets * 10).min(20),
             format!(
-                "`{}` exposed credential/env file(s)",
+                "`{}` secret file(s) readable by Claude Code (no Read deny rule)",
                 guard.total_exposed_secrets
             ),
         );

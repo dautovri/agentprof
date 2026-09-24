@@ -5,6 +5,9 @@ use std::process::Command;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+use crate::core::claude_permissions::SECRET_DENY_RULES;
 
 /// Unique marker identifying an agentprof-managed block.
 ///
@@ -37,20 +40,31 @@ pub struct FixAction {
 
 pub struct FixerEngine;
 
-/// Patterns agentprof manages inside ignore files.
+/// Patterns agentprof manages inside `.cursorignore`.
+///
+/// The secret patterns mirror `claude_permissions::SECRET_DENY_RULES`. Core
+/// dumps are matched as `core.<pid>` only: the earlier `core.*` also hid
+/// ordinary source files such as `src/core.ts` from the agent.
 const IGNORE_ENTRIES: &[(&str, &[&str])] = &[
     (
         "Secrets & sensitive files",
         &[
-            ".env",
-            ".env.*",
-            "!.env.example",
+            ".env*",
+            "!.env*.example",
+            "!.env*.sample",
+            "!.env*.template",
             "*.pem",
             "*.key",
+            "*.p12",
+            "*.pfx",
             "id_rsa",
+            "id_ecdsa",
             "id_ed25519",
             "credentials.json",
             "service-account.json",
+            ".netrc",
+            ".npmrc",
+            ".pypirc",
         ],
     ),
     (
@@ -81,45 +95,172 @@ const IGNORE_ENTRIES: &[(&str, &[&str])] = &[
             ".ruff_cache/",
         ],
     ),
-    ("Logs & dumps", &["*.log", "*.tmp", "core.*"]),
+    ("Logs & dumps", &["*.log", "*.tmp", "core.[0-9]*"]),
 ];
 
+const CLAUDE_SETTINGS_SCHEMA: &str = "https://json.schemastore.org/claude-code-settings.json";
+
 impl FixerEngine {
-    /// Adds agentprof's ignore patterns to `.claudeignore` / `.cursorignore`
-    /// **without discarding existing content**.
+    /// Protects the workspace from agent file access:
     ///
-    /// The previous implementation wrote the files unconditionally, destroying
-    /// any hand-curated rules the user had. Existing files are now backed up and
-    /// only the missing patterns are appended inside a managed block.
+    /// * adds `Read(...)` deny rules for secret files to `.claude/settings.json`
+    ///   (the mechanism Claude Code actually enforces), and
+    /// * maintains a managed block in `.cursorignore` for Cursor.
+    ///
+    /// `.claudeignore` is no longer written: Claude Code never reads it, so a
+    /// generated one only created a false sense of protection.
     pub fn generate_ignore_files(root: &Path, dry_run: bool) -> Result<Vec<FixAction>> {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-        let mut actions = Vec::new();
+        let mut actions = vec![
+            Self::apply_claude_deny_rules(&canonical_root, dry_run)?,
+            Self::apply_ignore_file(&canonical_root.join(".cursorignore"), dry_run)?,
+        ];
 
-        for name in [".claudeignore", ".cursorignore"] {
-            let path = canonical_root.join(name);
-            actions.push(Self::apply_ignore_file(&path, dry_run)?);
+        let claudeignore = canonical_root.join(".claudeignore");
+        if claudeignore.exists() {
+            actions.push(FixAction {
+                target: claudeignore,
+                outcome: FixOutcome::Skipped,
+                detail: "Claude Code does not read .claudeignore; left untouched. \
+                         Protection now lives in .claude/settings.json."
+                    .to_string(),
+                backup: None,
+            });
         }
 
         Ok(actions)
     }
 
+    /// Merges agentprof's secret deny rules into `.claude/settings.json`.
+    ///
+    /// agentprof's rules are placed first and the user's own rules after them,
+    /// so the user's `!` exceptions still carve paths out of ours, while our
+    /// exceptions (for `.env.example` and friends) can never loosen a rule the
+    /// user wrote. Everything else in the file is preserved as-is.
+    pub(crate) fn apply_claude_deny_rules(root: &Path, dry_run: bool) -> Result<FixAction> {
+        let path = root.join(".claude").join("settings.json");
+        let existing_text = fs::read_to_string(&path).ok();
+
+        let skipped = |detail: &str| FixAction {
+            target: path.clone(),
+            outcome: FixOutcome::Skipped,
+            detail: detail.to_string(),
+            backup: None,
+        };
+
+        let mut doc = match existing_text.as_deref().map(str::trim) {
+            Some(text) if !text.is_empty() => match serde_json::from_str::<Value>(text) {
+                Ok(Value::Object(map)) => Value::Object(map),
+                Ok(_) => return Ok(skipped("not a JSON object; left unchanged")),
+                Err(e) => {
+                    return Ok(skipped(&format!("not valid JSON ({}); left unchanged", e)));
+                }
+            },
+            _ => json!({ "$schema": CLAUDE_SETTINGS_SCHEMA }),
+        };
+
+        let Some(permissions) = doc
+            .as_object_mut()
+            .map(|o| o.entry("permissions").or_insert_with(|| json!({})))
+            .and_then(Value::as_object_mut)
+        else {
+            return Ok(skipped("`permissions` is not an object; left unchanged"));
+        };
+        let Some(deny) = permissions
+            .entry("deny")
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+        else {
+            return Ok(skipped(
+                "`permissions.deny` is not an array; left unchanged",
+            ));
+        };
+
+        let before: Vec<Value> = deny.clone();
+        let ours: Vec<Value> = SECRET_DENY_RULES.iter().map(|r| json!(r)).collect();
+        let added = ours.iter().filter(|r| !before.contains(r)).count();
+        let theirs = before.iter().filter(|r| !ours.contains(r)).cloned();
+        let merged: Vec<Value> = ours.iter().cloned().chain(theirs).collect();
+
+        if merged == before {
+            return Ok(FixAction {
+                target: path,
+                outcome: FixOutcome::AlreadyApplied,
+                detail: "secret-file deny rules already present".to_string(),
+                backup: None,
+            });
+        }
+        let detail = if added > 0 {
+            format!(
+                "{} Read deny rule(s) for secret files — Claude Code will refuse to read or edit them",
+                added
+            )
+        } else {
+            "reordered deny rules so user exceptions keep applying".to_string()
+        };
+        if dry_run {
+            return Ok(FixAction {
+                target: path,
+                outcome: FixOutcome::WouldChange,
+                detail: format!("would add {}", detail),
+                backup: None,
+            });
+        }
+
+        *deny = merged;
+        let exists = path.exists();
+        let backup = if exists {
+            Some(Self::backup_file(&path)?)
+        } else {
+            None
+        };
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut out = serde_json::to_string_pretty(&doc)?;
+        out.push('\n');
+        fs::write(&path, out).with_context(|| format!("Failed to write {}", path.display()))?;
+
+        Ok(FixAction {
+            target: path,
+            outcome: if exists {
+                FixOutcome::Updated
+            } else {
+                FixOutcome::Created
+            },
+            detail: format!("added {}", detail),
+            backup,
+        })
+    }
+
+    /// Rewrites agentprof's managed block in an ignore file, leaving every line
+    /// outside the block untouched.
+    ///
+    /// Only lines outside the block count as "already present". Counting the
+    /// block's own lines made a re-run drop every pattern except newly added
+    /// ones, since the old block is replaced wholesale.
     fn apply_ignore_file(path: &Path, dry_run: bool) -> Result<FixAction> {
         let existing = fs::read_to_string(path).unwrap_or_default();
         let exists = path.exists();
 
-        // Anything already present — inside or outside our block — is left alone.
-        let present: HashSet<&str> = existing
+        let user_part = Self::strip_managed_block(&existing, IGNORE_BLOCK_START, IGNORE_BLOCK_END);
+        let user_patterns: HashSet<&str> = user_part
             .lines()
             .map(|l| l.trim())
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
             .collect();
+        let old_block_patterns: HashSet<String> = Self::managed_block_lines(&existing)
+            .into_iter()
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
 
         let mut block = String::new();
+        let mut block_patterns = Vec::new();
         for (heading, patterns) in IGNORE_ENTRIES {
             let missing: Vec<&str> = patterns
                 .iter()
                 .copied()
-                .filter(|p| !present.contains(p))
+                .filter(|p| !user_patterns.contains(p))
                 .collect();
             if missing.is_empty() {
                 continue;
@@ -128,10 +269,25 @@ impl FixerEngine {
             for p in missing {
                 block.push_str(p);
                 block.push('\n');
+                block_patterns.push(p);
             }
         }
 
-        if block.is_empty() {
+        let mut out = user_part.trim_end().to_string();
+        if !block.is_empty() {
+            if !out.is_empty() {
+                out.push_str("\n\n");
+            }
+            out.push_str(IGNORE_BLOCK_START);
+            out.push_str("\n# Generated by agentprof. Edit outside this block; it is rewritten.\n");
+            out.push_str(block.trim_start_matches('\n'));
+            out.push_str(IGNORE_BLOCK_END);
+        }
+        if !out.is_empty() {
+            out.push('\n');
+        }
+
+        if out == existing {
             return Ok(FixAction {
                 target: path.to_path_buf(),
                 outcome: FixOutcome::AlreadyApplied,
@@ -140,42 +296,33 @@ impl FixerEngine {
             });
         }
 
-        let added = block
-            .lines()
-            .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        let added = block_patterns
+            .iter()
+            .filter(|p| !old_block_patterns.contains(**p))
             .count();
+        let removed = old_block_patterns
+            .iter()
+            .filter(|p| !block_patterns.contains(&p.as_str()))
+            .count();
+        let mut detail = format!("{} pattern(s) added", added);
+        if removed > 0 {
+            detail.push_str(&format!(", {} outdated pattern(s) removed", removed));
+        }
 
         if dry_run {
             return Ok(FixAction {
                 target: path.to_path_buf(),
                 outcome: FixOutcome::WouldChange,
-                detail: format!("would add {} pattern(s)", added),
+                detail: format!("would change: {}", detail),
                 backup: None,
             });
         }
 
-        // Strip any previous managed block so repeated runs stay idempotent.
-        let preserved = Self::strip_managed_block(&existing, IGNORE_BLOCK_START, IGNORE_BLOCK_END);
-
-        let backup = if exists && !preserved.trim().is_empty() {
-            let bak = Self::backup_file(path)?;
-            Some(bak)
+        let backup = if exists && !user_part.trim().is_empty() {
+            Some(Self::backup_file(path)?)
         } else {
             None
         };
-
-        let mut out = preserved.trim_end().to_string();
-        if !out.is_empty() {
-            out.push_str("\n\n");
-        }
-        out.push_str(IGNORE_BLOCK_START);
-        out.push_str(
-            "\n# Generated by agentprof. Edit above this line; this block is rewritten.\n",
-        );
-        out.push_str(block.trim_start_matches('\n'));
-        out.push_str(IGNORE_BLOCK_END);
-        out.push('\n');
-
         fs::write(path, out).with_context(|| format!("Failed to write {}", path.display()))?;
 
         Ok(FixAction {
@@ -185,7 +332,7 @@ impl FixerEngine {
             } else {
                 FixOutcome::Created
             },
-            detail: format!("added {} pattern(s)", added),
+            detail,
             backup,
         })
     }
@@ -210,12 +357,32 @@ impl FixerEngine {
         out
     }
 
+    fn managed_block_lines(content: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut inside = false;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed == IGNORE_BLOCK_START {
+                inside = true;
+            } else if trimmed == IGNORE_BLOCK_END {
+                inside = false;
+            } else if inside {
+                out.push(trimmed.to_string());
+            }
+        }
+        out
+    }
+
     fn backup_file(path: &Path) -> Result<PathBuf> {
         // Never clobber an earlier backup.
-        let mut candidate = path.with_extension("agentprof.bak");
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let mut candidate = path.with_file_name(format!("{}.agentprof.bak", file_name));
         let mut n = 1;
         while candidate.exists() {
-            candidate = path.with_extension(format!("agentprof.bak.{}", n));
+            candidate = path.with_file_name(format!("{}.agentprof.bak.{}", file_name, n));
             n += 1;
         }
         fs::copy(path, &candidate)
@@ -424,7 +591,7 @@ mod tests {
     #[test]
     fn test_existing_ignore_file_content_is_preserved() {
         let dir = tempdir("preserve");
-        let path = dir.join(".claudeignore");
+        let path = dir.join(".cursorignore");
         fs::write(&path, "# my curated rules\nsecret-project/\n").unwrap();
 
         FixerEngine::apply_ignore_file(&path, false).unwrap();
@@ -448,7 +615,7 @@ mod tests {
     #[test]
     fn test_existing_ignore_file_is_backed_up() {
         let dir = tempdir("backup");
-        let path = dir.join(".claudeignore");
+        let path = dir.join(".cursorignore");
         fs::write(&path, "keepme/\n").unwrap();
 
         let action = FixerEngine::apply_ignore_file(&path, false).unwrap();
@@ -460,7 +627,7 @@ mod tests {
     #[test]
     fn test_second_run_is_idempotent() {
         let dir = tempdir("idempotent");
-        let path = dir.join(".claudeignore");
+        let path = dir.join(".cursorignore");
 
         FixerEngine::apply_ignore_file(&path, false).unwrap();
         let first = fs::read_to_string(&path).unwrap();
@@ -472,14 +639,58 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// Regression: patterns inside the old managed block counted as "already
+    /// present", so rewriting the block on upgrade dropped all of them.
+    #[test]
+    fn test_upgrading_the_block_keeps_every_pattern_and_drops_core_star() {
+        let dir = tempdir("upgrade");
+        let path = dir.join(".cursorignore");
+        fs::write(
+            &path,
+            format!(
+                "mine/\n\n{}\n# Logs & dumps\n*.log\ncore.*\ntarget/\n{}\n",
+                IGNORE_BLOCK_START, IGNORE_BLOCK_END
+            ),
+        )
+        .unwrap();
+
+        let action = FixerEngine::apply_ignore_file(&path, false).unwrap();
+        assert_eq!(action.outcome, FixOutcome::Updated);
+        let after = fs::read_to_string(&path).unwrap();
+        for pattern in [
+            "mine/",
+            "*.log",
+            "target/",
+            "node_modules/",
+            "*.pem",
+            "core.[0-9]*",
+        ] {
+            assert!(
+                after.lines().any(|l| l == pattern),
+                "{} missing:\n{}",
+                pattern,
+                after
+            );
+        }
+        assert!(
+            !after.lines().any(|l| l == "core.*"),
+            "core.* hides src/core.ts"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn test_dry_run_writes_nothing() {
         let dir = tempdir("dryrun");
-        let path = dir.join(".claudeignore");
+        let path = dir.join(".cursorignore");
 
         let action = FixerEngine::apply_ignore_file(&path, true).unwrap();
         assert_eq!(action.outcome, FixOutcome::WouldChange);
         assert!(!path.exists(), "dry run created a file");
+
+        let action = FixerEngine::apply_claude_deny_rules(&dir, true).unwrap();
+        assert_eq!(action.outcome, FixOutcome::WouldChange);
+        assert!(!dir.join(".claude").exists(), "dry run created .claude/");
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -494,6 +705,102 @@ mod tests {
         assert!(stripped.contains("user line"));
         assert!(stripped.contains("trailing line"));
         assert!(!stripped.contains("managed"));
+    }
+
+    #[test]
+    fn test_deny_rules_create_a_settings_file() {
+        let dir = tempdir("deny_new");
+        let action = FixerEngine::apply_claude_deny_rules(&dir, false).unwrap();
+        assert_eq!(action.outcome, FixOutcome::Created);
+
+        let doc: Value =
+            serde_json::from_str(&fs::read_to_string(dir.join(".claude/settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(doc["$schema"], CLAUDE_SETTINGS_SCHEMA);
+        let deny = doc["permissions"]["deny"].as_array().unwrap();
+        assert_eq!(deny.len(), SECRET_DENY_RULES.len());
+        assert_eq!(deny[0], "Read(.env*)");
+
+        let again = FixerEngine::apply_claude_deny_rules(&dir, false).unwrap();
+        assert_eq!(again.outcome, FixOutcome::AlreadyApplied);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_deny_rules_merge_keeps_user_settings_and_key_order() {
+        let dir = tempdir("deny_merge");
+        fs::create_dir_all(dir.join(".claude")).unwrap();
+        let path = dir.join(".claude/settings.json");
+        fs::write(
+            &path,
+            r#"{
+  "model": "opus",
+  "permissions": {
+    "allow": ["Bash(npm test)"],
+    "deny": ["Read(./secrets/**)", "Read(!.env.shared)", "Read(*.pem)"]
+  },
+  "hooks": {}
+}"#,
+        )
+        .unwrap();
+
+        let action = FixerEngine::apply_claude_deny_rules(&dir, false).unwrap();
+        assert_eq!(action.outcome, FixOutcome::Updated);
+        assert!(action.backup.is_some());
+
+        let text = fs::read_to_string(&path).unwrap();
+        let model = text.find("\"model\"").unwrap();
+        let permissions = text.find("\"permissions\"").unwrap();
+        let hooks = text.find("\"hooks\"").unwrap();
+        assert!(
+            model < permissions && permissions < hooks,
+            "key order changed:\n{}",
+            text
+        );
+
+        let doc: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(doc["permissions"]["allow"][0], "Bash(npm test)");
+        let deny: Vec<&str> = doc["permissions"]["deny"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        // Ours first, then the user's remaining rules in their original order;
+        // the user's `!` exception comes after ours, so it still applies.
+        assert_eq!(&deny[..SECRET_DENY_RULES.len()], SECRET_DENY_RULES);
+        assert_eq!(
+            &deny[SECRET_DENY_RULES.len()..],
+            ["Read(./secrets/**)", "Read(!.env.shared)"]
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_invalid_settings_json_is_never_overwritten() {
+        let dir = tempdir("deny_bad");
+        fs::create_dir_all(dir.join(".claude")).unwrap();
+        let path = dir.join(".claude/settings.json");
+        fs::write(&path, "{ \"permissions\": { // comment\n } }").unwrap();
+
+        let action = FixerEngine::apply_claude_deny_rules(&dir, false).unwrap();
+        assert_eq!(action.outcome, FixOutcome::Skipped);
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "{ \"permissions\": { // comment\n } }"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_claudeignore_is_no_longer_generated() {
+        let dir = tempdir("no_claudeignore");
+        let actions = FixerEngine::generate_ignore_files(&dir, false).unwrap();
+        assert!(!dir.join(".claudeignore").exists());
+        assert!(dir.join(".claude/settings.json").exists());
+        assert!(dir.join(".cursorignore").exists());
+        assert_eq!(actions.len(), 2);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

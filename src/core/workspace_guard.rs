@@ -5,15 +5,18 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
+use crate::core::claude_permissions::ReadDenyRules;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeavyDirectory {
     pub path: PathBuf,
     pub relative_path: String,
     pub estimated_files: usize,
     pub directory_type: String,
-    pub is_ignored_by_claude: bool,
-    pub is_ignored_by_cursor: bool,
+    /// Agent search tools (ripgrep-based Grep/Glob, Cursor indexing) skip
+    /// gitignored paths, so this is what keeps them out of searches.
     pub is_ignored_by_git: bool,
+    pub is_ignored_by_cursor: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,20 +25,29 @@ pub struct SecretRiskFile {
     pub relative_path: String,
     pub risk_level: String,
     pub description: String,
-    pub is_ignored_by_claude: bool,
+    /// A `Read(...)` rule in a Claude Code settings file stops the agent from
+    /// reading this file.
+    pub blocked_for_claude: bool,
+    pub is_ignored_by_cursor: bool,
     pub is_ignored_by_git: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WorkspaceAuditReport {
     pub root: PathBuf,
-    pub has_claudeignore: bool,
-    pub has_cursorignore: bool,
     pub has_gitignore: bool,
+    pub has_cursorignore: bool,
+    /// Present only to warn about it: Claude Code never reads `.claudeignore`.
+    pub has_claudeignore: bool,
+    /// `Read` deny rules found across the Claude Code settings files in play.
+    pub claude_read_deny_rules: usize,
+    pub claude_deny_rule_sources: Vec<String>,
     pub detected_project_types: Vec<String>,
     pub heavy_directories: Vec<HeavyDirectory>,
     pub secret_risks: Vec<SecretRiskFile>,
+    /// Heavy directories that are not gitignored.
     pub total_unignored_heavy_dirs: usize,
+    /// Secret files Claude Code can read (no deny rule covers them).
     pub total_exposed_secrets: usize,
     pub recommendations: Vec<String>,
 }
@@ -50,23 +62,25 @@ pub struct WorkspaceGuard;
 
 impl WorkspaceGuard {
     pub fn audit(root: &Path) -> Result<WorkspaceAuditReport> {
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        Self::audit_with_home(root, home.as_deref())
+    }
+
+    /// Audits `root`, reading user-level Claude Code settings from `home`.
+    pub fn audit_with_home(root: &Path, home: Option<&Path>) -> Result<WorkspaceAuditReport> {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
 
-        let claudeignore_path = canonical_root.join(".claudeignore");
         let cursorignore_path = canonical_root.join(".cursorignore");
         let gitignore_path = canonical_root.join(".gitignore");
 
-        let has_claudeignore = claudeignore_path.exists();
         let has_cursorignore = cursorignore_path.exists();
         let has_gitignore = gitignore_path.exists();
+        let has_claudeignore = canonical_root.join(".claudeignore").exists();
 
-        // Real gitignore-syntax matchers. The previous implementation asked
-        // whether the ignore file's *text contained* the directory name, so
-        // `# not node_modules` counted as ignoring node_modules, and a rule like
-        // `build/` matched any path containing "build".
-        let claude_matcher = Self::build_matcher(&canonical_root, &claudeignore_path);
+        // Real gitignore-syntax matchers, not substring checks on the file text.
         let cursor_matcher = Self::build_matcher(&canonical_root, &cursorignore_path);
         let git_matcher = Self::build_matcher(&canonical_root, &gitignore_path);
+        let claude_rules = ReadDenyRules::load(&canonical_root, home);
 
         let detected_project_types = Self::detect_project_types(&canonical_root);
 
@@ -122,9 +136,8 @@ impl WorkspaceGuard {
                     relative_path: rel_path,
                     estimated_files: file_count,
                     directory_type: dtype.to_string(),
-                    is_ignored_by_claude: Self::is_ignored(&claude_matcher, path, true),
-                    is_ignored_by_cursor: Self::is_ignored(&cursor_matcher, path, true),
                     is_ignored_by_git: Self::is_ignored(&git_matcher, path, true),
+                    is_ignored_by_cursor: Self::is_ignored(&cursor_matcher, path, true),
                 });
             } else if let Some((risk, desc)) = Self::secret_risk(file_name) {
                 secret_risks.push(SecretRiskFile {
@@ -132,7 +145,8 @@ impl WorkspaceGuard {
                     relative_path: rel_path,
                     risk_level: risk.to_string(),
                     description: desc.to_string(),
-                    is_ignored_by_claude: Self::is_ignored(&claude_matcher, path, false),
+                    blocked_for_claude: claude_rules.blocks(path, false),
+                    is_ignored_by_cursor: Self::is_ignored(&cursor_matcher, path, false),
                     is_ignored_by_git: Self::is_ignored(&git_matcher, path, false),
                 });
             }
@@ -143,24 +157,27 @@ impl WorkspaceGuard {
 
         let total_unignored_heavy_dirs = heavy_directories
             .iter()
-            .filter(|d| !d.is_ignored_by_claude)
+            .filter(|d| !d.is_ignored_by_git)
             .count();
         let total_exposed_secrets = secret_risks
             .iter()
-            .filter(|s| !s.is_ignored_by_claude)
+            .filter(|s| !s.blocked_for_claude)
             .count();
 
         let mut recommendations = Vec::new();
-        if !has_claudeignore {
-            recommendations.push(
-                "Missing `.claudeignore`. Generate one with `agentprof fix --ignore`.".to_string(),
-            );
-        }
         if total_exposed_secrets > 0 {
             recommendations.push(format!(
-                "Found {} potential secret file(s) reachable by agent tools. Add them to `.claudeignore`.",
+                "{} secret file(s) are readable by Claude Code: no `Read(...)` deny rule covers them. \
+                 Run `agentprof fix` to add deny rules to .claude/settings.json.",
                 total_exposed_secrets
             ));
+        }
+        if has_claudeignore {
+            recommendations.push(
+                "`.claudeignore` is not read by Claude Code and protects nothing. \
+                 Use `permissions.deny` Read rules in .claude/settings.json instead (`agentprof fix`)."
+                    .to_string(),
+            );
         }
         // A secret that git also fails to ignore is a commit risk, not just an
         // agent-context risk, and is worth calling out separately.
@@ -173,16 +190,21 @@ impl WorkspaceGuard {
         }
         if total_unignored_heavy_dirs > 0 {
             recommendations.push(format!(
-                "Found {} unignored heavy directories slowing down agent search/grep tools.",
+                "{} build/dependency folder(s) are not in .gitignore, so agent search tools crawl them. Add them to .gitignore.",
                 total_unignored_heavy_dirs
             ));
+        }
+        if !has_gitignore && !heavy_directories.is_empty() {
+            recommendations.push("No .gitignore found at the workspace root.".to_string());
         }
 
         Ok(WorkspaceAuditReport {
             root: canonical_root,
-            has_claudeignore,
-            has_cursorignore,
             has_gitignore,
+            has_cursorignore,
+            has_claudeignore,
+            claude_read_deny_rules: claude_rules.rule_count,
+            claude_deny_rule_sources: claude_rules.sources,
             detected_project_types,
             heavy_directories,
             secret_risks,
@@ -245,9 +267,6 @@ impl WorkspaceGuard {
             "vendor" if root.join("go.mod").exists() || root.join("composer.json").exists() => {
                 Some("Vendored Dependencies")
             }
-            // The previous match arm was `".xcarchive" | "build" if file_name == "build" && ...`,
-            // where the guard applied to both patterns — so `.xcarchive` could
-            // never match and was silently dead.
             "build"
                 if root.join("Package.swift").exists()
                     || root.join("project.yml").exists()
@@ -259,6 +278,8 @@ impl WorkspaceGuard {
         }
     }
 
+    /// Flags files that commonly hold credentials. Kept in sync with
+    /// `claude_permissions::SECRET_DENY_RULES`.
     pub(crate) fn secret_risk(file_name: &str) -> Option<(&'static str, &'static str)> {
         if file_name.starts_with(".env")
             && !file_name.ends_with(".example")
@@ -271,8 +292,7 @@ impl WorkspaceGuard {
             || file_name.ends_with(".key")
             || file_name.ends_with(".p12")
             || file_name.ends_with(".pfx")
-            || file_name == "id_rsa"
-            || file_name == "id_ed25519"
+            || matches!(file_name, "id_rsa" | "id_ecdsa" | "id_ed25519")
         {
             return Some(("🚨 Critical", "Private key / certificate"));
         }
@@ -331,7 +351,16 @@ impl WorkspaceGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::claude_permissions::{ReadDenyRules, SECRET_DENY_RULES, SettingsScope};
     use std::fs;
+
+    fn tempdir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("agentprof_guard_{}_{}", tag, std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
     fn test_env_example_is_not_a_secret() {
@@ -343,16 +372,59 @@ mod tests {
 
     #[test]
     fn test_private_key_extensions_are_flagged() {
-        for name in ["server.pem", "tls.key", "cert.p12", "id_rsa", "id_ed25519"] {
+        for name in [
+            "server.pem",
+            "tls.key",
+            "cert.p12",
+            "id_rsa",
+            "id_ed25519",
+            "id_ecdsa",
+        ] {
             assert!(WorkspaceGuard::secret_risk(name).is_some(), "{}", name);
         }
         assert!(WorkspaceGuard::secret_risk("main.rs").is_none());
     }
 
+    /// Every file name the audit flags must be covered by the rules `fix`
+    /// writes, or the audit could never come back clean.
+    #[test]
+    fn test_deny_rules_cover_every_flagged_name() {
+        let root = PathBuf::from("/w");
+        let owned: Vec<String> = SECRET_DENY_RULES.iter().map(|s| s.to_string()).collect();
+        let rules = ReadDenyRules::from_rules(&root, None, SettingsScope::Project, &owned);
+        for name in [
+            ".env",
+            ".env.local",
+            ".envrc",
+            "a.pem",
+            "a.key",
+            "a.p12",
+            "a.pfx",
+            "id_rsa",
+            "id_ecdsa",
+            "id_ed25519",
+            "credentials.json",
+            "service-account.json",
+            ".netrc",
+            ".npmrc",
+            ".pypirc",
+        ] {
+            assert!(
+                WorkspaceGuard::secret_risk(name).is_some(),
+                "{} not flagged",
+                name
+            );
+            assert!(
+                rules.blocks(&root.join("sub").join(name), false),
+                "{} not denied",
+                name
+            );
+        }
+    }
+
     #[test]
     fn test_target_is_heavy_only_in_cargo_projects() {
-        let dir = std::env::temp_dir().join(format!("agentprof_guard_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
+        let dir = tempdir("target");
         fs::create_dir_all(dir.join("target")).unwrap();
 
         assert!(
@@ -370,20 +442,19 @@ mod tests {
 
     #[test]
     fn test_gitignore_comment_does_not_count_as_ignored() {
-        let dir = std::env::temp_dir().join(format!("agentprof_guard_gi_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
+        let dir = tempdir("gi");
         fs::create_dir_all(dir.join("node_modules")).unwrap();
         // Mentions node_modules only in a comment.
-        fs::write(dir.join(".claudeignore"), "# do not ignore node_modules\n").unwrap();
+        fs::write(dir.join(".gitignore"), "# do not ignore node_modules\n").unwrap();
 
-        let matcher = WorkspaceGuard::build_matcher(&dir, &dir.join(".claudeignore"));
+        let matcher = WorkspaceGuard::build_matcher(&dir, &dir.join(".gitignore"));
         assert!(
             !WorkspaceGuard::is_ignored(&matcher, &dir.join("node_modules"), true),
             "a commented mention must not count as an ignore rule"
         );
 
-        fs::write(dir.join(".claudeignore"), "node_modules/\n").unwrap();
-        let matcher = WorkspaceGuard::build_matcher(&dir, &dir.join(".claudeignore"));
+        fs::write(dir.join(".gitignore"), "node_modules/\n").unwrap();
+        let matcher = WorkspaceGuard::build_matcher(&dir, &dir.join(".gitignore"));
         assert!(WorkspaceGuard::is_ignored(
             &matcher,
             &dir.join("node_modules"),
@@ -394,20 +465,62 @@ mod tests {
 
     #[test]
     fn test_audit_does_not_descend_into_heavy_dirs() {
-        let dir = std::env::temp_dir().join(format!("agentprof_guard_walk_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
+        let dir = tempdir("walk");
         fs::create_dir_all(dir.join("node_modules/pkg")).unwrap();
         // A vendored fixture key must not be reported as the user's secret.
         fs::write(dir.join("node_modules/pkg/test.pem"), "fixture").unwrap();
         fs::write(dir.join("Cargo.toml"), "[package]").unwrap();
 
-        let report = WorkspaceGuard::audit(&dir).unwrap();
+        let report = WorkspaceGuard::audit_with_home(&dir, None).unwrap();
         assert!(
             report.secret_risks.is_empty(),
             "secrets inside node_modules must not be reported: {:?}",
             report.secret_risks
         );
         assert_eq!(report.heavy_directories.len(), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Regression: a `.claudeignore` entry used to count as protection even
+    /// though Claude Code never reads that file.
+    #[test]
+    fn test_claudeignore_is_not_protection_but_deny_rules_are() {
+        let dir = tempdir("deny");
+        fs::write(dir.join(".env"), "TOKEN=x").unwrap();
+        fs::write(dir.join(".claudeignore"), ".env\n").unwrap();
+
+        let report = WorkspaceGuard::audit_with_home(&dir, None).unwrap();
+        assert_eq!(report.total_exposed_secrets, 1);
+        assert!(report.has_claudeignore);
+        assert!(
+            report
+                .recommendations
+                .iter()
+                .any(|r| r.contains(".claudeignore"))
+        );
+
+        fs::create_dir_all(dir.join(".claude")).unwrap();
+        fs::write(
+            dir.join(".claude/settings.json"),
+            r#"{"permissions": {"deny": ["Read(.env)"]}}"#,
+        )
+        .unwrap();
+        let report = WorkspaceGuard::audit_with_home(&dir, None).unwrap();
+        assert_eq!(report.total_exposed_secrets, 0);
+        assert_eq!(report.claude_read_deny_rules, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_heavy_dirs_count_as_unignored_only_when_not_gitignored() {
+        let dir = tempdir("heavy");
+        fs::create_dir_all(dir.join("node_modules/x")).unwrap();
+        let report = WorkspaceGuard::audit_with_home(&dir, None).unwrap();
+        assert_eq!(report.total_unignored_heavy_dirs, 1);
+
+        fs::write(dir.join(".gitignore"), "node_modules/\n").unwrap();
+        let report = WorkspaceGuard::audit_with_home(&dir, None).unwrap();
+        assert_eq!(report.total_unignored_heavy_dirs, 0);
         let _ = fs::remove_dir_all(&dir);
     }
 }

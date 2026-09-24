@@ -59,10 +59,17 @@ impl ScanCommand {
                 rec_count
             );
         }
-        if !workspace_audit.has_claudeignore || workspace_audit.total_exposed_secrets > 0 {
+        if workspace_audit.total_exposed_secrets > 0 {
             rec_count += 1;
             println!(
-                "  [{}] Generate safe `.claudeignore`: `agentprof fix --ignore`",
+                "  [{}] Block agent access to {} secret file(s) with Claude Code deny rules: `agentprof fix`",
+                rec_count, workspace_audit.total_exposed_secrets
+            );
+        }
+        if workspace_audit.has_claudeignore {
+            rec_count += 1;
+            println!(
+                "  [{}] `.claudeignore` is not read by Claude Code; rely on deny rules instead: `agentprof fix`",
                 rec_count
             );
         }

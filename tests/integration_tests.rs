@@ -2,8 +2,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+/// Runs agentprof against an empty home directory, so results never depend
+/// on the developer's own agent configs, transcripts or shell rc files.
 fn bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_agentprof"))
+    let home = std::env::temp_dir().join(format!("agentprof_it_home_{}", std::process::id()));
+    fs::create_dir_all(&home).unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_agentprof"));
+    cmd.env("HOME", &home);
+    cmd
 }
 
 fn run(args: &[&str]) -> Output {
@@ -172,20 +178,51 @@ fn test_compress_overwrite_creates_a_backup() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Regression: `fix --ignore` used to overwrite `.claudeignore` wholesale,
-/// destroying hand-written rules.
+/// Regression: `fix --ignore` used to overwrite ignore files wholesale,
+/// destroying hand-curated rules.
 #[test]
 fn test_fix_preserves_existing_ignore_rules() {
     let dir = workspace("fixignore");
-    fs::write(dir.join(".claudeignore"), "# curated\nprivate-notes/\n").unwrap();
+    fs::write(dir.join(".cursorignore"), "# curated\nprivate-notes/\n").unwrap();
 
     let out = run(&["fix", "--ignore", dir.to_str().unwrap()]);
     assert!(out.status.success());
 
-    let after = fs::read_to_string(dir.join(".claudeignore")).unwrap();
+    let after = fs::read_to_string(dir.join(".cursorignore")).unwrap();
     assert!(after.contains("# curated"), "user comment lost");
     assert!(after.contains("private-notes/"), "user rule lost");
     assert!(after.contains("target/"), "agentprof rules not added");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Claude Code only honours `permissions.deny`, so that is what `fix` must
+/// write — and the audit must then report the secret as protected.
+#[test]
+fn test_fix_protects_secrets_with_claude_deny_rules() {
+    let dir = workspace("fixdeny");
+    fs::write(dir.join(".env"), "TOKEN=abc\n").unwrap();
+    fs::write(dir.join(".env.example"), "TOKEN=\n").unwrap();
+    let path = dir.to_str().unwrap();
+
+    let before = assert_valid_json(&run(&["scan", path, "--json"]), "scan");
+    assert_eq!(before["workspace"]["total_exposed_secrets"], 1);
+
+    let out = run(&["fix", path]);
+    assert!(out.status.success());
+    assert!(
+        !dir.join(".claudeignore").exists(),
+        ".claudeignore must not be generated"
+    );
+    let settings = fs::read_to_string(dir.join(".claude/settings.json")).unwrap();
+    assert!(settings.contains("Read(.env*)"), "{}", settings);
+
+    let after = assert_valid_json(&run(&["scan", path, "--json"]), "scan");
+    assert_eq!(after["workspace"]["total_exposed_secrets"], 0);
+    assert_eq!(
+        after["workspace"]["secret_risks"].as_array().unwrap().len(),
+        1
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -195,14 +232,9 @@ fn test_fix_dry_run_writes_nothing() {
     let dir = workspace("fixdry");
     let out = run(&["fix", "--ignore", "--dry-run", dir.to_str().unwrap()]);
     assert!(out.status.success());
-    assert!(
-        !dir.join(".claudeignore").exists(),
-        "dry run created a file"
-    );
-    assert!(
-        !dir.join(".cursorignore").exists(),
-        "dry run created a file"
-    );
+    for created in [".claudeignore", ".cursorignore", ".claude"] {
+        assert!(!dir.join(created).exists(), "dry run created {}", created);
+    }
     let _ = fs::remove_dir_all(&dir);
 }
 

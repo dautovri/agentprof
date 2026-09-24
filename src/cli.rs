@@ -152,7 +152,7 @@ pub enum Commands {
         path: Option<PathBuf>,
     },
 
-    /// Apply automated optimizations (.claudeignore, fast-path bypass guard)
+    /// Protect secrets from agents (Claude Code deny rules, .cursorignore) and apply opt-in shell tweaks
     Fix {
         /// Target directory
         path: Option<PathBuf>,
@@ -161,7 +161,7 @@ pub enum Commands {
         #[arg(long)]
         shell: bool,
 
-        /// Generate safe .claudeignore and .cursorignore files
+        /// Add Read deny rules for secret files to .claude/settings.json and a managed .cursorignore block (default)
         #[arg(long)]
         ignore: bool,
 
