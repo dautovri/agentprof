@@ -295,7 +295,7 @@ impl InstructionScanner {
 
             let mut recs = Vec::new();
             if tokens_cl100k > 3_000 {
-                recs.push("File exceeds 3,000 tokens. Consider splitting into JIT modular rules via `agentprof compile`.".to_string());
+                recs.push("File exceeds 3,000 tokens. Move language- or area-specific sections into path-scoped rules (`agentprof compile`).".to_string());
             } else if tokens_cl100k > 1_500 {
                 recs.push("Context size is moderate (>1,500 tokens). Prune conversational filler or older changelog notes.".to_string());
             }

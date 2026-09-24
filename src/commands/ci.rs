@@ -36,8 +36,11 @@ impl CiCommand {
         }
 
         println!(
-            "     The workflow fails the build when the health score drops below {}.",
+            "     The workflow runs the agentprof GitHub Action and fails when the repository health score drops below {},",
             min_score.to_string().bold()
+        );
+        println!(
+            "     a secret file is readable by Claude Code, or instruction files contradict each other."
         );
         println!();
         Ok(())

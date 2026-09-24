@@ -341,20 +341,25 @@ fn test_compile_keeps_content_of_repeated_headings() {
     let dir = workspace("compile");
     fs::write(
         dir.join("AGENTS.md"),
-        "## Setup\nalpha rule\n\n## Setup\nbeta rule\n",
+        "## Python\nalpha rule\n\n## Python\nbeta rule\n",
     )
     .unwrap();
 
-    let out = run(&["compile", dir.to_str().unwrap()]);
+    let out = run(&["compile", dir.to_str().unwrap(), "--target", "claude"]);
     assert!(out.status.success());
 
-    let combined: String = fs::read_dir(dir.join(".agentrules"))
+    let combined: String = fs::read_dir(dir.join(".claude/rules"))
         .unwrap()
         .filter_map(|e| e.ok())
         .map(|e| fs::read_to_string(e.path()).unwrap_or_default())
         .collect();
     assert!(combined.contains("alpha rule"), "first section lost");
     assert!(combined.contains("beta rule"), "second section lost");
+    assert!(combined.contains("paths:"), "rules must be path-scoped");
+    assert!(
+        !dir.join(".agentrules").exists(),
+        "no agent reads .agentrules/"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -386,7 +391,7 @@ fn test_ci_does_not_clobber_existing_workflow() {
     // With --force it is replaced, but the original is kept.
     let out = run(&["ci", dir.to_str().unwrap(), "--force"]);
     assert!(out.status.success());
-    assert!(fs::read_to_string(&wf).unwrap().contains("--fail-under"));
+    assert!(fs::read_to_string(&wf).unwrap().contains("fail-under:"));
     assert_eq!(
         fs::read_to_string(dir.join(".github/workflows/agentprof-audit.yml.agentprof.bak"))
             .unwrap(),
@@ -578,13 +583,21 @@ fn test_generated_ci_workflow_is_valid_yaml_shape() {
 
     let yaml = fs::read_to_string(dir.join(".github/workflows/agentprof-audit.yml")).unwrap();
     assert!(yaml.starts_with("name:"));
-    assert!(yaml.contains("--fail-under 85"), "threshold not embedded");
+    assert!(yaml.contains("fail-under: 85"), "threshold not embedded");
     assert!(yaml.contains("runs-on: ubuntu-latest"));
-    // GitHub expression braces must survive Rust's format! escaping.
     assert!(
-        yaml.contains("${{ runner.os }}"),
-        "broken GitHub expression syntax"
+        yaml.contains("permissions:"),
+        "no least-privilege permissions block"
     );
+    assert!(
+        yaml.contains(&format!(
+            "uses: dautovri/agentprof@v{}",
+            env!("CARGO_PKG_VERSION")
+        )),
+        "action not pinned to this release"
+    );
+    // No unexpanded Rust format placeholders may leak into the YAML.
+    assert!(!yaml.contains("{version}") && !yaml.contains("{min_score}"));
 
     let _ = fs::remove_dir_all(&dir);
 }

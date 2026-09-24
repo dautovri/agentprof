@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
 # agentprof installer
 #
-# Works both inside a checkout and piped from the web:
-#   ./install.sh
 #   curl -fsSL https://raw.githubusercontent.com/dautovri/agentprof/main/install.sh | bash
+#   ./install.sh --from-source          # build this checkout with cargo
 #
-# When run outside a checkout it clones the repository into a temporary
-# directory first. The previous version ran `cargo build` in the caller's
-# current directory, so the advertised curl|bash install always failed with
-# "could not find Cargo.toml".
+# Downloads the prebuilt binary for this platform from GitHub Releases and
+# verifies its SHA-256 checksum before installing. When no binary exists for
+# the platform (or with --from-source) it builds with cargo instead. It never
+# installs a Rust toolchain on your behalf.
+#
+# Environment:
+#   AGENTPROF_VERSION      release tag to install, e.g. v0.3.0 (default: latest)
+#   AGENTPROF_INSTALL_DIR  destination directory (default: /usr/local/bin when
+#                          writable, otherwise ~/.local/bin)
+#   AGENTPROF_REPO         GitHub owner/repo to install from (default: dautovri/agentprof)
 
 set -euo pipefail
 
-REPO_URL="${AGENTPROF_REPO:-https://github.com/dautovri/agentprof.git}"
+REPO="${AGENTPROF_REPO:-dautovri/agentprof}"
+VERSION="${AGENTPROF_VERSION:-latest}"
+FROM_SOURCE=0
+
 BOLD=''; CYAN=''; GREEN=''; YELLOW=''; RED=''; RESET=''
-if [ -t 1 ]; then
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   BOLD=$'\033[1m'; CYAN=$'\033[0;36m'; GREEN=$'\033[0;32m'
   YELLOW=$'\033[0;33m'; RED=$'\033[0;31m'; RESET=$'\033[0m'
 fi
@@ -23,63 +31,139 @@ info()  { printf '%s\n' "${BOLD}$*${RESET}"; }
 warn()  { printf '%s\n' "${YELLOW}$*${RESET}" >&2; }
 die()   { printf '%s\n' "${RED}error:${RESET} $*" >&2; exit 1; }
 
-CLONE_DIR=""
-cleanup() { [ -n "$CLONE_DIR" ] && rm -rf "$CLONE_DIR"; }
+usage() {
+  sed -n '2,19p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --from-source) FROM_SOURCE=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown option: $arg (see --help)" ;;
+  esac
+done
+
+TMP_DIR="$(mktemp -d)"
+cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
 
-printf '%s\n\n' "${CYAN}${BOLD}⚡ Installing agentprof (AI Agent Workspace Optimizer)...${RESET}"
+printf '%s\n\n' "${CYAN}${BOLD}⚡ Installing agentprof...${RESET}"
 
-# 1. Rust toolchain
-if ! command -v cargo >/dev/null 2>&1; then
-  warn "Cargo/Rust not detected — installing via rustup."
-  command -v curl >/dev/null 2>&1 || die "curl is required to install Rust."
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-  # shellcheck disable=SC1091
-  . "${CARGO_HOME:-$HOME/.cargo}/env"
-fi
-command -v cargo >/dev/null 2>&1 || die "cargo is still unavailable after installation."
-
-# 2. Locate the source. Prefer an existing checkout; otherwise clone.
-SCRIPT_DIR=""
-if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-fi
-
-if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/Cargo.toml" ]; then
-  SRC_DIR="$SCRIPT_DIR"
-  info "📁 Building from local checkout: $SRC_DIR"
-else
-  command -v git >/dev/null 2>&1 || die "git is required to install from the web."
-  CLONE_DIR="$(mktemp -d)"
-  info "📥 Cloning $REPO_URL ..."
-  git clone --depth 1 "$REPO_URL" "$CLONE_DIR/agentprof" >/dev/null 2>&1 \
-    || die "failed to clone $REPO_URL"
-  SRC_DIR="$CLONE_DIR/agentprof"
-fi
-
-# 3. Build
-info "🔨 Building optimized release binary..."
-( cd "$SRC_DIR" && cargo build --release ) || die "build failed."
-
-BINARY="$SRC_DIR/target/release/agentprof"
-[ -x "$BINARY" ] || die "expected binary not found at $BINARY"
-
-# 4. Choose a writable destination already on PATH where possible.
+# --- Where to install -------------------------------------------------------
 if [ -n "${AGENTPROF_INSTALL_DIR:-}" ]; then
   INSTALL_DIR="$AGENTPROF_INSTALL_DIR"
 elif [ -w "/usr/local/bin" ]; then
   INSTALL_DIR="/usr/local/bin"
 else
-  INSTALL_DIR="${CARGO_HOME:-$HOME/.cargo}/bin"
+  INSTALL_DIR="$HOME/.local/bin"
 fi
-mkdir -p "$INSTALL_DIR"
 
+# --- Platform ---------------------------------------------------------------
+platform_asset() {
+  local os arch
+  case "$(uname -s)" in
+    Darwin) os="darwin" ;;
+    Linux) os="linux" ;;
+    *) return 1 ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64) arch="x86_64" ;;
+    arm64|aarch64) arch="arm64" ;;
+    *) return 1 ;;
+  esac
+  printf 'agentprof-%s-%s.tar.gz' "$os" "$arch"
+}
+
+fetch() {
+  # fetch URL DEST
+  if command -v curl >/dev/null 2>&1; then
+    curl --proto '=https' --tlsv1.2 -fsSL "$1" -o "$2"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q "$1" -O "$2"
+  else
+    die "curl or wget is required to download agentprof."
+  fi
+}
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    die "sha256sum or shasum is required to verify the download."
+  fi
+}
+
+# --- Prebuilt binary --------------------------------------------------------
+install_binary() {
+  local asset base expected actual
+  asset="$(platform_asset)" || return 1
+  if [ "$VERSION" = "latest" ]; then
+    base="https://github.com/$REPO/releases/latest/download"
+  else
+    base="https://github.com/$REPO/releases/download/$VERSION"
+  fi
+
+  info "📥 Downloading $asset ($VERSION)..."
+  fetch "$base/$asset" "$TMP_DIR/$asset" || return 1
+  fetch "$base/$asset.sha256" "$TMP_DIR/$asset.sha256" \
+    || die "no checksum published for $asset; refusing to install an unverified binary."
+
+  expected="$(awk '{print $1}' "$TMP_DIR/$asset.sha256")"
+  actual="$(sha256_of "$TMP_DIR/$asset")"
+  [ -n "$expected" ] && [ "$expected" = "$actual" ] \
+    || die "checksum mismatch for $asset (expected $expected, got $actual)."
+  info "🔒 Checksum verified."
+
+  tar -xzf "$TMP_DIR/$asset" -C "$TMP_DIR"
+  [ -f "$TMP_DIR/agentprof" ] || die "archive did not contain an agentprof binary."
+  BINARY="$TMP_DIR/agentprof"
+}
+
+# --- Build from source ------------------------------------------------------
+install_from_source() {
+  command -v cargo >/dev/null 2>&1 \
+    || die "building from source needs Rust. Install it from https://rustup.rs and re-run."
+
+  local src=""
+  local script_dir=""
+  if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  fi
+  if [ -n "$script_dir" ] && [ -f "$script_dir/Cargo.toml" ]; then
+    src="$script_dir"
+    info "📁 Building from local checkout: $src"
+  else
+    command -v git >/dev/null 2>&1 || die "git is required to build from source."
+    local ref=()
+    [ "$VERSION" != "latest" ] && ref=(--branch "$VERSION")
+    info "📥 Cloning https://github.com/$REPO ..."
+    # ${ref[@]+...} keeps an empty array from tripping `set -u` on bash 3.2 (macOS).
+    git clone --depth 1 ${ref[@]+"${ref[@]}"} "https://github.com/$REPO.git" "$TMP_DIR/src" >/dev/null 2>&1 \
+      || die "failed to clone https://github.com/$REPO"
+    src="$TMP_DIR/src"
+  fi
+
+  info "🔨 Building release binary (this takes a minute)..."
+  ( cd "$src" && cargo build --release --locked ) || die "build failed."
+  BINARY="$src/target/release/agentprof"
+  [ -x "$BINARY" ] || die "expected binary not found at $BINARY"
+}
+
+BINARY=""
+if [ "$FROM_SOURCE" = "1" ]; then
+  install_from_source
+elif ! install_binary; then
+  warn "No prebuilt binary for $(uname -s)/$(uname -m) ($VERSION); building from source instead."
+  install_from_source
+fi
+
+mkdir -p "$INSTALL_DIR"
 info "📦 Installing to $INSTALL_DIR/agentprof ..."
 install -m 755 "$BINARY" "$INSTALL_DIR/agentprof"
 
-# 5. Verify, and warn if the destination is not on PATH.
-printf '\n%s\n' "${GREEN}${BOLD}🎉 Installation successful!${RESET}"
-"$INSTALL_DIR/agentprof" --version
+printf '\n%s\n' "${GREEN}${BOLD}🎉 Installed $("$INSTALL_DIR/agentprof" --version)${RESET}"
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
@@ -88,7 +172,7 @@ case ":$PATH:" in
 esac
 
 printf '\n%s\n' "${BOLD}Quick start:${RESET}"
-printf '  • Full scan:        %s\n' "${CYAN}agentprof scan${RESET}"
-printf '  • Interactive TUI:  %s\n' "${CYAN}agentprof tui${RESET}"
-printf '  • Measure MCP load: %s\n' "${CYAN}agentprof mcp --probe${RESET}"
-printf '  • Preview fixes:    %s\n\n' "${CYAN}agentprof fix --dry-run${RESET}"
+printf '  • Full scan:          %s\n' "${CYAN}agentprof scan${RESET}"
+printf '  • Protect secrets:    %s\n' "${CYAN}agentprof fix --dry-run${RESET}"
+printf '  • Measure MCP load:   %s\n' "${CYAN}agentprof mcp --probe${RESET}"
+printf '  • Interactive TUI:    %s\n\n' "${CYAN}agentprof tui${RESET}"

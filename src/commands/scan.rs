@@ -84,7 +84,7 @@ impl ScanCommand {
         if context_summary.total_tokens_cl100k > 3000 {
             rec_count += 1;
             println!(
-                "  [{}] Compile monolithic rules into JIT modules: `agentprof compile`",
+                "  [{}] Move language-specific sections into path-scoped rules: `agentprof compile --dry-run`",
                 rec_count
             );
         }

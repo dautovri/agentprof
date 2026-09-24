@@ -70,9 +70,19 @@ fn main() -> anyhow::Result<()> {
             markdown,
             fail_under,
             repo_only,
+            fail_on_secrets,
+            sarif,
         }) => {
             let path = resolve(path);
-            let code = ReportCommand::execute(&path, markdown, fail_under, repo_only, json)?;
+            let options = commands::report::ReportOptions {
+                markdown,
+                fail_under,
+                repo_only,
+                fail_on_secrets,
+                sarif,
+                json,
+            };
+            let code = ReportCommand::execute(&path, &options)?;
             if code != 0 {
                 std::process::exit(code);
             }
@@ -126,9 +136,21 @@ fn main() -> anyhow::Result<()> {
             let path = resolve(path);
             FixCommand::execute(&path, shell, ignore, zcompile, all, dry_run, json)?;
         }
-        Some(Commands::Compile { path }) => {
+        Some(Commands::Compile {
+            path,
+            target,
+            apply,
+            dry_run,
+            force,
+        }) => {
             let path = resolve(path);
-            CompileCommand::execute(&path, json)?;
+            let options = core::jit_compiler::CompileOptions {
+                targets: target,
+                apply,
+                dry_run,
+                force,
+            };
+            CompileCommand::execute(&path, &options, json)?;
         }
         None => {
             // Default action: run full scan

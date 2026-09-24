@@ -11,6 +11,7 @@ pub mod pricing;
 pub mod report_generator;
 pub mod rule_compressor;
 pub mod rule_linter;
+pub mod sarif;
 pub mod scanner;
 pub mod session_history;
 pub mod shell_bench;

@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
+
+use crate::core::jit_compiler::RuleTarget;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -96,6 +98,14 @@ pub enum Commands {
         /// Use this in CI.
         #[arg(long)]
         repo_only: bool,
+
+        /// Exit with code 1 if any secret file is readable by Claude Code
+        #[arg(long)]
+        fail_on_secrets: bool,
+
+        /// Also write findings as SARIF 2.1.0 to this file (for GitHub code scanning)
+        #[arg(long, value_name = "FILE")]
+        sarif: Option<PathBuf>,
     },
 
     /// Profile specific AI agent platforms (OpenCode, Claude Code, Grok)
@@ -194,10 +204,28 @@ pub enum Commands {
         dry_run: bool,
     },
 
-    /// Compile monolithic instruction files into modular JIT rules
+    /// Move language- and area-specific sections of AGENTS.md / CLAUDE.md into
+    /// path-scoped rules that agents load only when matching files are in play
     Compile {
         /// Target directory
         path: Option<PathBuf>,
+
+        /// Rule formats to write (default: detected from the workspace)
+        #[arg(long, value_enum, value_delimiter = ',')]
+        target: Vec<RuleTarget>,
+
+        /// Remove the moved sections from the source file (a backup is kept).
+        /// Agents that only read that file (e.g. Codex) stop seeing them.
+        #[arg(long)]
+        apply: bool,
+
+        /// Show what would be written without writing anything
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Overwrite rule files that already exist
+        #[arg(long)]
+        force: bool,
     },
 }
 

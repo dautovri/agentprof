@@ -1,0 +1,113 @@
+name: agentprof audit
+description: Gate pull requests on AI-agent workspace health — instruction-file bloat, secrets readable by agents, and ignore hygiene.
+author: Ruslan Dautov
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Directory to audit.
+    default: "."
+  fail-under:
+    description: Minimum health score (0-100). The job fails below it. Set to 0 to report only.
+    default: "70"
+  fail-on-secrets:
+    description: Fail when any secret file is readable by Claude Code ("true"/"false").
+    default: "true"
+  lint:
+    description: Fail on contradictions between instruction files ("true"/"false").
+    default: "true"
+  sarif:
+    description: Write findings to this SARIF file, for github/codeql-action/upload-sarif. Empty to skip.
+    default: ""
+  comment:
+    description: >-
+      Post or update one pull-request comment with the report ("true"/"false").
+      Needs `permissions: pull-requests: write`; skipped for forks.
+    default: "false"
+  version:
+    description: agentprof release to install, e.g. v0.3.0, or "latest".
+    default: "latest"
+
+outputs:
+  score:
+    description: Workspace health score (0-100), repository checks only.
+    value: ${{ steps.report.outputs.score }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install agentprof
+      shell: bash
+      env:
+        AGENTPROF_VERSION: ${{ inputs.version }}
+        AGENTPROF_INSTALL_DIR: ${{ runner.temp }}/agentprof/bin
+        ACTION_REF: ${{ github.action_ref }}
+      run: |
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          echo "::error title=agentprof::Windows runners are not supported; use ubuntu-latest or macos-latest."
+          exit 1
+        fi
+        # `uses: dautovri/agentprof@v0.3.0` installs that same release.
+        if [ "$AGENTPROF_VERSION" = "latest" ] && [[ "$ACTION_REF" =~ ^v[0-9] ]]; then
+          export AGENTPROF_VERSION="$ACTION_REF"
+        fi
+        # Prebuilt binary with checksum verification; builds this action's own
+        # checkout with cargo only if no binary exists for the runner.
+        bash "$GITHUB_ACTION_PATH/install.sh"
+        echo "$AGENTPROF_INSTALL_DIR" >> "$GITHUB_PATH"
+
+    - name: Health report
+      id: report
+      shell: bash
+      env:
+        AUDIT_PATH: ${{ inputs.path }}
+        SARIF_FILE: ${{ inputs.sarif }}
+      run: |
+        args=(report "$AUDIT_PATH" --repo-only)
+        if [ -n "$SARIF_FILE" ]; then
+          args+=(--sarif "$SARIF_FILE")
+        fi
+        agentprof "${args[@]}" --json > "$RUNNER_TEMP/agentprof-report.json"
+        agentprof report "$AUDIT_PATH" --repo-only --markdown > "$RUNNER_TEMP/agentprof-report.md"
+        cat "$RUNNER_TEMP/agentprof-report.md" >> "$GITHUB_STEP_SUMMARY"
+        echo "score=$(jq -r .score "$RUNNER_TEMP/agentprof-report.json")" >> "$GITHUB_OUTPUT"
+
+    - name: Comment on the pull request
+      if: inputs.comment == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        marker='<!-- agentprof-report -->'
+        body="$(printf '%s\n%s' "$marker" "$(cat "$RUNNER_TEMP/agentprof-report.md")")"
+        existing="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+          --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)"
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/$REPO/issues/comments/$existing" -f body="$body" >/dev/null
+        else
+          gh api "repos/$REPO/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null
+        fi
+
+    - name: Check instruction files for contradictions
+      if: inputs.lint == 'true'
+      shell: bash
+      env:
+        AUDIT_PATH: ${{ inputs.path }}
+      run: agentprof lint "$AUDIT_PATH"
+
+    - name: Enforce the health budget
+      shell: bash
+      env:
+        AUDIT_PATH: ${{ inputs.path }}
+        FAIL_UNDER: ${{ inputs.fail-under }}
+        FAIL_ON_SECRETS: ${{ inputs.fail-on-secrets }}
+      run: |
+        args=(report "$AUDIT_PATH" --repo-only --fail-under "$FAIL_UNDER")
+        if [ "$FAIL_ON_SECRETS" = "true" ]; then
+          args+=(--fail-on-secrets)
+        fi
+        agentprof "${args[@]}" > /dev/null

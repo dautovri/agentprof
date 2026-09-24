@@ -70,53 +70,45 @@ impl CiGenerator {
         })
     }
 
+    /// The workflow runs the agentprof GitHub Action pinned to this binary's
+    /// own release, which installs a checksum-verified prebuilt binary.
+    ///
+    /// It used to `cargo install` from git on every run (minutes per job, no
+    /// pinned version), scored machine-specific categories such as the
+    /// runner's shell startup, and ran with the default token permissions.
     pub(crate) fn workflow_yaml(min_score: usize) -> String {
         format!(
             r#"name: AI Agent Workspace Audit
 
 on:
   pull_request:
-    branches: [main, master, develop]
   push:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
-  agentprof-audit:
-    name: Audit Context & Instruction Budget
+  agentprof:
+    name: Agent workspace audit
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo bin
-        uses: actions/cache@v4
+      # Fails the job when the repository health score drops below
+      # `fail-under`, when a secret file is readable by Claude Code, or when
+      # instruction files contradict each other. The report is written to the
+      # job summary. Only repository contents are scored (`--repo-only`), so
+      # the result does not depend on the runner.
+      - uses: dautovri/agentprof@v{version}
         with:
-          path: ~/.cargo/bin
-          key: agentprof-${{{{ runner.os }}}}
-
-      - name: Install agentprof
-        run: cargo install --git https://github.com/dautovri/agentprof agentprof --locked
-
-      - name: Write health report to the job summary
-        run: agentprof report --markdown >> "$GITHUB_STEP_SUMMARY"
-
-      # This step is the gate: `--fail-under` exits non-zero when the workspace
-      # health score drops below the threshold, failing the check.
-      - name: Enforce agent workspace health budget
-        run: agentprof report --fail-under {min_score}
-
-      - name: Fail on secrets reachable by agent tools
-        run: |
-          exposed=$(agentprof scan --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["workspace"]["total_exposed_secrets"])')
-          echo "Exposed secret files: $exposed"
-          if [ "$exposed" -gt 0 ]; then
-            echo "::error title=agentprof::$exposed secret file(s) are reachable by agent tools"
-            exit 1
-          fi
+          fail-under: {min_score}
+          # To annotate pull requests, also grant `security-events: write`,
+          # set `sarif: agentprof.sarif` and add a
+          # github/codeql-action/upload-sarif step. To post a sticky PR
+          # comment, grant `pull-requests: write` and set `comment: true`.
 "#,
+            version = env!("CARGO_PKG_VERSION"),
             min_score = min_score
         )
     }
@@ -127,10 +119,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_workflow_embeds_the_threshold_and_gates() {
+    fn test_workflow_pins_the_action_and_threshold() {
         let yaml = CiGenerator::workflow_yaml(75);
-        assert!(yaml.contains("--fail-under 75"));
-        assert!(yaml.contains("exit 1"));
+        assert!(yaml.contains("fail-under: 75"));
+        assert!(yaml.contains(&format!(
+            "dautovri/agentprof@v{}",
+            env!("CARGO_PKG_VERSION")
+        )));
+        assert!(yaml.contains("permissions:\n  contents: read"));
+        assert!(
+            !yaml.contains("cargo install"),
+            "must not compile from source in CI"
+        );
     }
 
     #[test]
