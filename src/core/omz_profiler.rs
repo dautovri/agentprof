@@ -1,10 +1,10 @@
+use anyhow::{Context, Result};
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
-use anyhow::{Context, Result};
-use regex::Regex;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OmzPluginReport {
@@ -95,14 +95,18 @@ impl OmzProfiler {
         let mut recommendations = Vec::new();
 
         if !bytecode_compiled && total_shell_startup_ms > 80.0 {
-            recommendations.push("Compile ~/.zshrc and plugins with `zcompile` to reduce disk I/O latency.".to_string());
+            recommendations.push(
+                "Compile ~/.zshrc and plugins with `zcompile` to reduce disk I/O latency."
+                    .to_string(),
+            );
         }
 
         for plugin in &plugin_reports {
             if plugin.is_slow
-                && let Some(rec) = &plugin.recommendation {
-                    recommendations.push(rec.clone());
-                }
+                && let Some(rec) = &plugin.recommendation
+            {
+                recommendations.push(rec.clone());
+            }
         }
 
         for hook in &slow_hooks {
@@ -133,20 +137,22 @@ impl OmzProfiler {
         // Regex for plugins=(git nvm docker ...)
         let re = Regex::new(r"(?ms)plugins=\((.*?)\)").unwrap();
         if let Some(caps) = re.captures(zshrc)
-            && let Some(matched) = caps.get(1) {
-                for token in matched.as_str().split_whitespace() {
-                    let clean = token.trim();
-                    if !clean.is_empty() && !clean.starts_with('#') {
-                        list.push(clean.to_string());
-                    }
+            && let Some(matched) = caps.get(1)
+        {
+            for token in matched.as_str().split_whitespace() {
+                let clean = token.trim();
+                if !clean.is_empty() && !clean.starts_with('#') {
+                    list.push(clean.to_string());
                 }
             }
+        }
         list
     }
 
     fn extract_theme(zshrc: &str) -> Option<String> {
         let re = Regex::new(r#"ZSH_THEME=["']?([^"'\n]+)["']?"#).unwrap();
-        re.captures(zshrc).and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+        re.captures(zshrc)
+            .and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
     }
 
     fn profile_plugins(
@@ -166,8 +172,14 @@ impl OmzProfiler {
 
         for plugin in plugins {
             // Find plugin path
-            let custom_plugin = home.join(".oh-my-zsh/custom/plugins").join(plugin).join(format!("{}.plugin.zsh", plugin));
-            let standard_plugin = omz_dir.join("plugins").join(plugin).join(format!("{}.plugin.zsh", plugin));
+            let custom_plugin = home
+                .join(".oh-my-zsh/custom/plugins")
+                .join(plugin)
+                .join(format!("{}.plugin.zsh", plugin));
+            let standard_plugin = omz_dir
+                .join("plugins")
+                .join(plugin)
+                .join(format!("{}.plugin.zsh", plugin));
 
             let target_path = if custom_plugin.exists() {
                 Some(custom_plugin)
@@ -236,7 +248,10 @@ impl OmzProfiler {
         if !out.status.success() {
             return None;
         }
-        String::from_utf8_lossy(&out.stdout).trim().parse::<f64>().ok()
+        String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse::<f64>()
+            .ok()
     }
 
     /// Detects known-slow initialization hooks in the rc file.
@@ -259,9 +274,7 @@ impl OmzProfiler {
             HookSpec {
                 marker: "nvm.sh",
                 name: "NVM (Node Version Manager)",
-                timing_command: Some(
-                    "[ -r \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"",
-                ),
+                timing_command: Some("[ -r \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\""),
                 suggestion: "Lazy-load NVM so its cost is paid only when node/npm is first invoked.",
             },
             HookSpec {
@@ -339,7 +352,10 @@ impl OmzProfiler {
         if !out.status.success() {
             return None;
         }
-        String::from_utf8_lossy(&out.stdout).trim().parse::<f64>().ok()
+        String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse::<f64>()
+            .ok()
     }
 }
 

@@ -1,8 +1,8 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompiledRuleModule {
@@ -36,7 +36,9 @@ pub struct JitRuleCompiler;
 
 impl JitRuleCompiler {
     pub fn compile_monolithic_rules(workspace_root: &Path) -> Result<CompilationResult> {
-        let canonical_root = workspace_root.canonicalize().unwrap_or_else(|_| workspace_root.to_path_buf());
+        let canonical_root = workspace_root
+            .canonicalize()
+            .unwrap_or_else(|_| workspace_root.to_path_buf());
 
         // Find primary rule file
         let candidate = if canonical_root.join("AGENTS.md").exists() {
@@ -44,7 +46,10 @@ impl JitRuleCompiler {
         } else if canonical_root.join("CLAUDE.md").exists() {
             canonical_root.join("CLAUDE.md")
         } else {
-            anyhow::bail!("No AGENTS.md or CLAUDE.md found in {}", canonical_root.display());
+            anyhow::bail!(
+                "No AGENTS.md or CLAUDE.md found in {}",
+                canonical_root.display()
+            );
         };
 
         let content = fs::read_to_string(&candidate)?;
@@ -84,9 +89,17 @@ impl JitRuleCompiler {
 
         // Generate JIT Router index
         let router_md = out_dir.join("index.md");
-        let mut router_content = String::from("# JIT Rule Router\n\nLoad modular rules on-demand by matched file extension:\n\n");
+        let mut router_content = String::from(
+            "# JIT Rule Router\n\nLoad modular rules on-demand by matched file extension:\n\n",
+        );
         for m in &modules {
-            router_content.push_str(&format!("- **{}** (`{}`): {} tokens -> `{}`\n", m.name, m.target_file_pattern, m.token_count, m.path.file_name().unwrap_or_default().to_string_lossy()));
+            router_content.push_str(&format!(
+                "- **{}** (`{}`): {} tokens -> `{}`\n",
+                m.name,
+                m.target_file_pattern,
+                m.token_count,
+                m.path.file_name().unwrap_or_default().to_string_lossy()
+            ));
         }
         fs::write(&router_md, router_content)?;
 
@@ -175,7 +188,8 @@ impl JitRuleCompiler {
             "**/*.{tsx,jsx,css}"
         } else {
             "*"
-        }.to_string();
+        }
+        .to_string();
 
         Ok(CompiledRuleModule {
             name: title.to_string(),
@@ -194,15 +208,24 @@ mod tests {
     #[test]
     fn test_slugify_strips_unsafe_characters() {
         assert_eq!(JitRuleCompiler::slugify("## API: v2 (beta)"), "api-v2-beta");
-        assert_eq!(JitRuleCompiler::slugify("# Swift / iOS Rules"), "swift-ios-rules");
+        assert_eq!(
+            JitRuleCompiler::slugify("# Swift / iOS Rules"),
+            "swift-ios-rules"
+        );
         assert_eq!(JitRuleCompiler::slugify("##   "), "general");
     }
 
     #[test]
     fn test_slugify_cannot_escape_the_output_directory() {
         let slug = JitRuleCompiler::slugify("## ../../etc/passwd");
-        assert!(!slug.contains('/'), "slug must not contain a path separator");
-        assert!(!slug.contains(".."), "slug must not contain a parent reference");
+        assert!(
+            !slug.contains('/'),
+            "slug must not contain a path separator"
+        );
+        assert!(
+            !slug.contains(".."),
+            "slug must not contain a parent reference"
+        );
     }
 
     #[test]

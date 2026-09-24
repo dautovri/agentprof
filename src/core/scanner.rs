@@ -1,8 +1,8 @@
+use anyhow::Result;
+use ignore::WalkBuilder;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use ignore::WalkBuilder;
 
 use crate::core::tokens::TokenCounter;
 
@@ -92,10 +92,13 @@ impl InstructionScanner {
     /// Covers the formats the tool claims to support (Cursor, Windsurf, Copilot,
     /// Gemini, Cline, Aider, Codex) rather than only AGENTS.md/CLAUDE.md.
     pub(crate) fn classify(file_name: &str, path_str: &str) -> Option<RuleFileCategory> {
-        if file_name.eq_ignore_ascii_case("AGENTS.md") || file_name.eq_ignore_ascii_case("AGENT.md") {
+        if file_name.eq_ignore_ascii_case("AGENTS.md") || file_name.eq_ignore_ascii_case("AGENT.md")
+        {
             return Some(RuleFileCategory::AgentsMd);
         }
-        if file_name.eq_ignore_ascii_case("CLAUDE.md") || file_name.eq_ignore_ascii_case("CLAUDE.local.md") {
+        if file_name.eq_ignore_ascii_case("CLAUDE.md")
+            || file_name.eq_ignore_ascii_case("CLAUDE.local.md")
+        {
             return Some(RuleFileCategory::ClaudeMd);
         }
         if file_name.eq_ignore_ascii_case(".cursorrules")
@@ -221,8 +224,14 @@ impl InstructionScanner {
         let total_lines: usize = files.iter().map(|f| f.lines).sum();
         let total_tokens_cl100k: usize = files.iter().map(|f| f.tokens_cl100k).sum();
         let total_tokens_o200k: usize = files.iter().map(|f| f.tokens_o200k).sum();
-        let warnings_count = files.iter().filter(|f| matches!(f.status, HealthStatus::Warning)).count();
-        let bloated_count = files.iter().filter(|f| matches!(f.status, HealthStatus::Bloated)).count();
+        let warnings_count = files
+            .iter()
+            .filter(|f| matches!(f.status, HealthStatus::Warning))
+            .count();
+        let bloated_count = files
+            .iter()
+            .filter(|f| matches!(f.status, HealthStatus::Bloated))
+            .count();
 
         let est_cost_per_100_turns = TokenCounter::estimate_cost_per_100_turns(total_tokens_cl100k);
         let pct_of_128k = TokenCounter::context_percentage(total_tokens_cl100k, 128_000);
@@ -298,7 +307,10 @@ mod tests {
         fs::write(dir.join("generated/AGENTS.md"), "# generated noise\n").unwrap();
 
         let summary = InstructionScanner::scan_workspace(&dir).unwrap();
-        assert_eq!(summary.total_files, 1, "gitignored rule files must not be counted");
+        assert_eq!(
+            summary.total_files, 1,
+            "gitignored rule files must not be counted"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 }

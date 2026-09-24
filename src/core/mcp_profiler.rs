@@ -116,19 +116,46 @@ impl McpProfiler {
 
         let candidate_paths = vec![
             (home.join(".claude.json"), "~/.claude.json".to_string()),
-            (home.join(".claude/settings.json"), "~/.claude/settings.json".to_string()),
+            (
+                home.join(".claude/settings.json"),
+                "~/.claude/settings.json".to_string(),
+            ),
             (
                 home.join("Library/Application Support/Claude/claude_desktop_config.json"),
                 "~/Library/Application Support/Claude/claude_desktop_config.json".to_string(),
             ),
-            (home.join(".config/opencode/opencode.json"), "~/.config/opencode/opencode.json".to_string()),
-            (home.join(".config/opencode/config.json"), "~/.config/opencode/config.json".to_string()),
-            (home.join(".config/opencode/settings.json"), "~/.config/opencode/settings.json".to_string()),
-            (home.join(".codex/config.json"), "~/.codex/config.json".to_string()),
-            (workspace_root.join(".mcp.json"), ".mcp.json (workspace)".to_string()),
-            (workspace_root.join("opencode.json"), "opencode.json (workspace)".to_string()),
-            (workspace_root.join(".cursor/mcp.json"), ".cursor/mcp.json".to_string()),
-            (workspace_root.join(".vscode/mcp.json"), ".vscode/mcp.json".to_string()),
+            (
+                home.join(".config/opencode/opencode.json"),
+                "~/.config/opencode/opencode.json".to_string(),
+            ),
+            (
+                home.join(".config/opencode/config.json"),
+                "~/.config/opencode/config.json".to_string(),
+            ),
+            (
+                home.join(".config/opencode/settings.json"),
+                "~/.config/opencode/settings.json".to_string(),
+            ),
+            (
+                home.join(".codex/config.json"),
+                "~/.codex/config.json".to_string(),
+            ),
+            (
+                workspace_root.join(".mcp.json"),
+                ".mcp.json (workspace)".to_string(),
+            ),
+            (
+                workspace_root.join("opencode.json"),
+                "opencode.json (workspace)".to_string(),
+            ),
+            (
+                workspace_root.join(".cursor/mcp.json"),
+                ".cursor/mcp.json".to_string(),
+            ),
+            (
+                workspace_root.join(".vscode/mcp.json"),
+                ".vscode/mcp.json".to_string(),
+            ),
         ];
 
         for (path, label) in candidate_paths {
@@ -143,7 +170,11 @@ impl McpProfiler {
                 continue;
             };
 
-            let scope = if label.starts_with('~') { "global" } else { "workspace" };
+            let scope = if label.starts_with('~') {
+                "global"
+            } else {
+                "workspace"
+            };
             Self::extract_mcp_servers(&json, &label, scope, &mut servers_map);
 
             // ~/.claude.json additionally carries per-project server blocks; only
@@ -401,8 +432,10 @@ impl McpProfiler {
                 "clientInfo": {"name": "agentprof", "version": env!("CARGO_PKG_VERSION")}
             }
         });
-        let initialized = serde_json::json!({"jsonrpc": "2.0", "method": "notifications/initialized"});
-        let list = serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}});
+        let initialized =
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/initialized"});
+        let list =
+            serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}});
 
         let write_result = (|| -> std::io::Result<()> {
             writeln!(stdin, "{}", init)?;
@@ -436,9 +469,8 @@ impl McpProfiler {
         let _ = child.kill();
         let _ = child.wait();
 
-        let response = response.map_err(|_| {
-            anyhow::anyhow!("no tools/list response within {}s", timeout.as_secs())
-        })?;
+        let response = response
+            .map_err(|_| anyhow::anyhow!("no tools/list response within {}s", timeout.as_secs()))?;
 
         let tools = response
             .get("result")
@@ -475,7 +507,10 @@ mod tests {
         McpProfiler::extract_mcp_servers(&json, "test.json", "global", &mut map);
         assert_eq!(map.len(), 2);
         assert_eq!(map["alpha"].command_or_type, "/bin/alpha");
-        assert_eq!(map["alpha"].raw_args.as_deref(), Some(&["--stdio".to_string()][..]));
+        assert_eq!(
+            map["alpha"].raw_args.as_deref(),
+            Some(&["--stdio".to_string()][..])
+        );
         assert_eq!(map["beta"].command_or_type, "https://example.test/mcp");
     }
 

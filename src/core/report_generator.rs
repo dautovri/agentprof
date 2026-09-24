@@ -81,7 +81,10 @@ impl ReportGenerator {
                     "Subshell Spawn Latency",
                     20,
                     deduction,
-                    format!("`{:.1}ms` avoidable tax per command ({})", tax, bench.shell_name),
+                    format!(
+                        "`{:.1}ms` avoidable tax per command ({})",
+                        tax, bench.shell_name
+                    ),
                 )
             }
             None => CategoryScore {
@@ -108,7 +111,10 @@ impl ReportGenerator {
                 t if t > 2_000 => 4,
                 _ => 0,
             },
-            format!("`{}` tokens across {} instruction file(s)", ctx_tokens, context.total_files),
+            format!(
+                "`{}` tokens across {} instruction file(s)",
+                ctx_tokens, context.total_files
+            ),
         );
 
         // 3. Workspace hygiene (20).
@@ -120,7 +126,10 @@ impl ReportGenerator {
             "Workspace Hygiene",
             20,
             hygiene_deduction,
-            format!("`{}` unignored heavy build folder(s)", guard.total_unignored_heavy_dirs),
+            format!(
+                "`{}` unignored heavy build folder(s)",
+                guard.total_unignored_heavy_dirs
+            ),
         );
 
         // 4. Secrets (20).
@@ -128,7 +137,10 @@ impl ReportGenerator {
             "Secret & Security Guard",
             20,
             (guard.total_exposed_secrets * 10).min(20),
-            format!("`{}` exposed credential/env file(s)", guard.total_exposed_secrets),
+            format!(
+                "`{}` exposed credential/env file(s)",
+                guard.total_exposed_secrets
+            ),
         );
 
         // 5. MCP schema load (20). Previously displayed but never scored, so a

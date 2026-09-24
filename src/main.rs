@@ -62,7 +62,11 @@ fn main() -> anyhow::Result<()> {
                 std::process::exit(code);
             }
         }
-        Some(Commands::Report { path, markdown, fail_under }) => {
+        Some(Commands::Report {
+            path,
+            markdown,
+            fail_under,
+        }) => {
             let path = resolve(path);
             let code = ReportCommand::execute(&path, markdown, fail_under, json)?;
             if code != 0 {
@@ -73,7 +77,11 @@ fn main() -> anyhow::Result<()> {
             let path = resolve(path);
             AgentCommand::execute(&path, json)?;
         }
-        Some(Commands::Mcp { path, probe, probe_timeout }) => {
+        Some(Commands::Mcp {
+            path,
+            probe,
+            probe_timeout,
+        }) => {
             let path = resolve(path);
             McpCommand::execute(&path, probe, probe_timeout, json)?;
         }
@@ -84,7 +92,11 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::History { sessions }) => {
             HistoryCommand::execute(sessions, json)?;
         }
-        Some(Commands::Ci { path, min_score, force }) => {
+        Some(Commands::Ci {
+            path,
+            min_score,
+            force,
+        }) => {
             let path = resolve(path);
             CiCommand::execute(&path, min_score, force)?;
         }

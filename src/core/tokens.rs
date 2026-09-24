@@ -88,7 +88,8 @@ mod tests {
 
     #[test]
     fn test_token_counting() {
-        let text = "You are an expert software engineer adhering strictly to modern Swift guidelines.";
+        let text =
+            "You are an expert software engineer adhering strictly to modern Swift guidelines.";
         let tokens = TokenCounter::count_cl100k(text);
         assert!(tokens > 5 && tokens < 30);
     }

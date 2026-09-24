@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use clap_complete::Shell;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -17,7 +17,13 @@ pub struct Cli {
     // Uses a distinct argument id: a subcommand positional also named `path`
     // shadowed the global one, which made `--path` silently unusable on every
     // subcommand.
-    #[arg(short, long = "path", id = "global_path", global = true, value_name = "DIR")]
+    #[arg(
+        short,
+        long = "path",
+        id = "global_path",
+        global = true,
+        value_name = "DIR"
+    )]
     pub path: Option<PathBuf>,
 
     /// Output results as JSON

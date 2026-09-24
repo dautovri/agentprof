@@ -88,9 +88,14 @@ impl FixCommand {
         println!(
             "\n{}",
             if dry_run {
-                "Preview complete. Re-run without --dry-run to apply.".bold().to_string()
+                "Preview complete. Re-run without --dry-run to apply."
+                    .bold()
+                    .to_string()
             } else {
-                "🎉 Done. Re-run `agentprof scan` to verify improvements.".green().bold().to_string()
+                "🎉 Done. Re-run `agentprof scan` to verify improvements."
+                    .green()
+                    .bold()
+                    .to_string()
             }
         );
         Ok(())

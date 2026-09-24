@@ -16,7 +16,10 @@ impl AgentWrapper {
 
         let guard_installed = ShellBenchmarker::check_for_agent_guard();
 
-        println!("{}", "⚡ [agentprof] Wrapping agent session...".bold().cyan());
+        println!(
+            "{}",
+            "⚡ [agentprof] Wrapping agent session...".bold().cyan()
+        );
         println!("  • Program:  {}", program.bold());
         println!("  • Injected: AGENTPROF_FAST_PATH=1, AGENTPROF_ACTIVE=1");
         if !guard_installed {
@@ -75,9 +78,13 @@ impl AgentWrapper {
         println!(
             "  • Shell Fast-Path:        {}",
             if guard_installed {
-                "active for subshells started by this session".green().to_string()
+                "active for subshells started by this session"
+                    .green()
+                    .to_string()
             } else {
-                "not installed — no shell startup cost was avoided".dimmed().to_string()
+                "not installed — no shell startup cost was avoided"
+                    .dimmed()
+                    .to_string()
             }
         );
         println!("{}", "═".repeat(78).dimmed());

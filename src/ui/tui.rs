@@ -6,13 +6,17 @@ use std::time::Duration;
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::execute;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
+use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Tabs, Wrap};
-use ratatui::Terminal;
+use ratatui::widgets::{
+    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Tabs, Wrap,
+};
 
 use crate::core::mcp_profiler::{McpProfileReport, McpProfiler};
 use crate::core::report_generator::{ReportGenerator, WorkspaceHealthScore};
@@ -23,7 +27,14 @@ use crate::core::skills_auditor::{SkillsAuditReport, SkillsAuditor};
 use crate::core::workspace_guard::{WorkspaceAuditReport, WorkspaceGuard};
 use crate::ui::formatters::Formatters;
 
-const TAB_TITLES: [&str; 6] = ["Overview", "Context", "MCP Schemas", "Skills", "Subshell", "History"];
+const TAB_TITLES: [&str; 6] = [
+    "Overview",
+    "Context",
+    "MCP Schemas",
+    "Skills",
+    "Subshell",
+    "History",
+];
 
 /// Restores the terminal on drop, including during an unwinding panic.
 ///
@@ -94,7 +105,15 @@ impl TuiApp {
         let skills = SkillsAuditor::audit(workspace_root)?;
         let history = SessionHistoryAnalyzer::analyze()?;
 
-        let data = AppData { health, context, bench, mcp, skills, history, guard };
+        let data = AppData {
+            health,
+            context,
+            bench,
+            mcp,
+            skills,
+            history,
+            guard,
+        };
 
         // A panic inside ratatui must not leave the terminal wrecked.
         let default_hook = panic::take_hook();
@@ -111,10 +130,7 @@ impl TuiApp {
         result
     }
 
-    fn event_loop(
-        terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-        data: &AppData,
-    ) -> Result<()> {
+    fn event_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, data: &AppData) -> Result<()> {
         let mut selected_tab = 0usize;
         let mut scroll: u16 = 0;
 
@@ -290,12 +306,16 @@ impl TuiApp {
                     Formatters::format_tokens(c.total_tokens_cl100k),
                     c.total_files
                 ),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
         ];
         if c.files.is_empty() {
-            lines.push(Line::from("  No AI instruction files found in this workspace."));
+            lines.push(Line::from(
+                "  No AI instruction files found in this workspace.",
+            ));
         }
         for file in &c.files {
             lines.push(Line::from(format!(
@@ -318,7 +338,9 @@ impl TuiApp {
                     m.measured_server_count,
                     Formatters::format_tokens(m.measured_schema_tokens)
                 ),
-                Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
         ];
@@ -353,7 +375,9 @@ impl TuiApp {
                     Formatters::format_tokens(s.total_tokens),
                     s.collisions.len()
                 ),
-                Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(Span::styled(
@@ -388,7 +412,9 @@ impl TuiApp {
         let mut lines = vec![
             Line::from(Span::styled(
                 format!("Subshell spawn benchmark ({})", b.shell_name),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
         ];
@@ -426,7 +452,11 @@ impl TuiApp {
         )));
         lines.push(Line::from(format!(
             "  • Agent fast-path guard:        {}",
-            if b.has_agent_fast_path { "installed" } else { "missing" }
+            if b.has_agent_fast_path {
+                "installed"
+            } else {
+                "missing"
+            }
         )));
         lines.push(Line::from(format!(
             "  • Method:                       median of {} runs after warm-up",
@@ -443,7 +473,9 @@ impl TuiApp {
         let mut lines = vec![
             Line::from(Span::styled(
                 "Agent session history",
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(format!(
@@ -466,7 +498,10 @@ impl TuiApp {
                 Formatters::format_currency(h.total_estimated_cost_usd),
                 h.pricing_label
             )),
-            Line::from(format!("  • Loop thrash:        {}", h.loop_thrash_incidents)),
+            Line::from(format!(
+                "  • Loop thrash:        {}",
+                h.loop_thrash_incidents
+            )),
             Line::from(""),
             Line::from(Span::styled(
                 "Most used tools:",

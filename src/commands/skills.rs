@@ -1,5 +1,5 @@
-use std::path::Path;
 use anyhow::Result;
+use std::path::Path;
 
 use crate::core::skills_auditor::SkillsAuditor;
 use crate::ui::tables::TableRenderer;

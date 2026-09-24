@@ -1,6 +1,6 @@
-use std::path::Path;
 use anyhow::Result;
 use owo_colors::OwoColorize;
+use std::path::Path;
 
 use crate::core::jit_compiler::JitRuleCompiler;
 use crate::ui::formatters::Formatters;
@@ -10,7 +10,10 @@ pub struct CompileCommand;
 impl CompileCommand {
     pub fn execute(workspace_root: &Path, json: bool) -> Result<()> {
         if !json {
-            println!("{}", "⚡ Compiling monolithic rules into JIT modular instructions...".bold());
+            println!(
+                "{}",
+                "⚡ Compiling monolithic rules into JIT modular instructions...".bold()
+            );
         }
 
         let result = JitRuleCompiler::compile_monolithic_rules(workspace_root)?;
@@ -21,8 +24,14 @@ impl CompileCommand {
         }
 
         println!("  • Source:        {}", result.source_file.display().bold());
-        println!("  • Total Tokens:  {}", Formatters::format_tokens(result.original_tokens).yellow());
-        println!("  • Output Dir:    {}", result.output_directory.display().bold().green());
+        println!(
+            "  • Total Tokens:  {}",
+            Formatters::format_tokens(result.original_tokens).yellow()
+        );
+        println!(
+            "  • Output Dir:    {}",
+            result.output_directory.display().bold().green()
+        );
         println!("  • Modules Built: {}", result.total_modules_created.bold());
         println!(
             "  • Always Loaded: {} tokens",
@@ -36,10 +45,20 @@ impl CompileCommand {
 
         println!("\n{}", "Compiled Modules:".bold());
         for m in &result.modules {
-            println!("  • {:<20} -> {} tokens (Pattern: `{}`)", m.name.bold(), Formatters::format_tokens(m.token_count).yellow(), m.target_file_pattern.cyan());
+            println!(
+                "  • {:<20} -> {} tokens (Pattern: `{}`)",
+                m.name.bold(),
+                Formatters::format_tokens(m.token_count).yellow(),
+                m.target_file_pattern.cyan()
+            );
         }
 
-        println!("\n{}", "✅ JIT instructions generated in .agentrules/".green().bold());
+        println!(
+            "\n{}",
+            "✅ JIT instructions generated in .agentrules/"
+                .green()
+                .bold()
+        );
         Ok(())
     }
 }

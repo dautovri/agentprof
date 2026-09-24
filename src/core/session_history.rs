@@ -118,7 +118,9 @@ impl SessionHistoryAnalyzer {
         let pricing = Pricing::DEFAULT;
 
         for (path, modified) in &transcripts {
-            if let Some(summary) = Self::parse_transcript(path, *modified, &pricing, &mut tool_counts) {
+            if let Some(summary) =
+                Self::parse_transcript(path, *modified, &pricing, &mut tool_counts)
+            {
                 total_turns += summary.turn_count;
                 usage.add(&summary.usage);
                 if summary.repeated_tool_calls > 0 {
@@ -154,7 +156,8 @@ impl SessionHistoryAnalyzer {
         }
         if usage.cache_read_tokens > 0 {
             let cached_share = usage.cache_read_tokens as f64
-                / (usage.cache_read_tokens + usage.cache_creation_tokens + usage.input_tokens).max(1) as f64
+                / (usage.cache_read_tokens + usage.cache_creation_tokens + usage.input_tokens)
+                    .max(1) as f64
                 * 100.0;
             if cached_share < 50.0 {
                 recommendations.push(format!(
@@ -288,7 +291,10 @@ impl SessionHistoryAnalyzer {
 
                     // Loop thrash: the same tool invoked with byte-identical
                     // input twice in a row is a retry that made no progress.
-                    let input = block.get("input").map(|i| i.to_string()).unwrap_or_default();
+                    let input = block
+                        .get("input")
+                        .map(|i| i.to_string())
+                        .unwrap_or_default();
                     let call = (name.to_string(), input);
                     if last_call.as_ref() == Some(&call) {
                         repeated_tool_calls += 1;
@@ -331,9 +337,9 @@ impl SessionHistoryAnalyzer {
     fn is_human_turn(message: &serde_json::Value) -> bool {
         match message.get("content") {
             Some(serde_json::Value::String(_)) => true,
-            Some(serde_json::Value::Array(blocks)) => !blocks.iter().any(|b| {
-                b.get("type").and_then(|t| t.as_str()) == Some("tool_result")
-            }),
+            Some(serde_json::Value::Array(blocks)) => !blocks
+                .iter()
+                .any(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result")),
             _ => false,
         }
     }
@@ -425,7 +431,8 @@ mod tests {
 
     #[test]
     fn test_missing_transcript_dir_yields_no_sessions() {
-        let empty = SessionHistoryAnalyzer::collect_transcripts(Path::new("/nonexistent/agentprof"));
+        let empty =
+            SessionHistoryAnalyzer::collect_transcripts(Path::new("/nonexistent/agentprof"));
         assert!(empty.is_empty());
     }
 }

@@ -27,7 +27,10 @@ impl CiCommand {
                     "  ℹ️  {} already exists — left untouched.",
                     result.path.display().yellow()
                 );
-                println!("     Re-run with {} to replace it (a backup is kept).", "--force".bold());
+                println!(
+                    "     Re-run with {} to replace it (a backup is kept).",
+                    "--force".bold()
+                );
                 return Ok(());
             }
         }

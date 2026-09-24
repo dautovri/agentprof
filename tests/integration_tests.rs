@@ -7,7 +7,10 @@ fn bin() -> Command {
 }
 
 fn run(args: &[&str]) -> Output {
-    bin().args(args).output().expect("failed to execute agentprof")
+    bin()
+        .args(args)
+        .output()
+        .expect("failed to execute agentprof")
 }
 
 fn workspace(tag: &str) -> PathBuf {
@@ -34,8 +37,23 @@ fn test_cli_help_lists_all_commands() {
     assert!(out.status.success());
     let text = stdout(&out);
     for cmd in [
-        "scan", "agent", "mcp", "skills", "history", "compress", "lint", "report", "wrap", "tui",
-        "omz", "bench", "context", "fix", "compile", "ci", "completions",
+        "scan",
+        "agent",
+        "mcp",
+        "skills",
+        "history",
+        "compress",
+        "lint",
+        "report",
+        "wrap",
+        "tui",
+        "omz",
+        "bench",
+        "context",
+        "fix",
+        "compile",
+        "ci",
+        "completions",
     ] {
         assert!(text.contains(cmd), "`{}` missing from --help", cmd);
     }
@@ -59,10 +77,16 @@ fn test_json_output_is_never_polluted_by_banners() {
     fs::write(dir.join("AGENTS.md"), "# Rules\n\n- Use tabs.\n").unwrap();
     let path = dir.to_str().unwrap();
 
-    for cmd in ["scan", "lint", "context", "report", "skills", "mcp", "agent"] {
+    for cmd in [
+        "scan", "lint", "context", "report", "skills", "mcp", "agent",
+    ] {
         let out = run(&[cmd, path, "--json"]);
         let value = assert_valid_json(&out, cmd);
-        assert!(value.is_object() || value.is_array(), "{} JSON has odd shape", cmd);
+        assert!(
+            value.is_object() || value.is_array(),
+            "{} JSON has odd shape",
+            cmd
+        );
     }
 
     let out = run(&["bench", "--iterations", "3", "--json"]);
@@ -76,7 +100,11 @@ fn test_json_output_is_never_polluted_by_banners() {
 #[test]
 fn test_lint_detects_vague_rule() {
     let dir = workspace("lint");
-    fs::write(dir.join("AGENTS.md"), "# Rules\n\n- Follow best practices\n").unwrap();
+    fs::write(
+        dir.join("AGENTS.md"),
+        "# Rules\n\n- Follow best practices\n",
+    )
+    .unwrap();
 
     let out = run(&["lint", dir.to_str().unwrap(), "--json"]);
     let value = assert_valid_json(&out, "lint");
@@ -89,7 +117,11 @@ fn test_lint_detects_vague_rule() {
 #[test]
 fn test_lint_reports_cross_file_contradiction() {
     let dir = workspace("lintconflict");
-    fs::write(dir.join("AGENTS.md"), "Use ObservableObject for view models.\n").unwrap();
+    fs::write(
+        dir.join("AGENTS.md"),
+        "Use ObservableObject for view models.\n",
+    )
+    .unwrap();
     fs::write(dir.join("CLAUDE.md"), "Use @Observable for view models.\n").unwrap();
 
     let out = run(&["lint", dir.to_str().unwrap(), "--json"]);
@@ -163,8 +195,14 @@ fn test_fix_dry_run_writes_nothing() {
     let dir = workspace("fixdry");
     let out = run(&["fix", "--ignore", "--dry-run", dir.to_str().unwrap()]);
     assert!(out.status.success());
-    assert!(!dir.join(".claudeignore").exists(), "dry run created a file");
-    assert!(!dir.join(".cursorignore").exists(), "dry run created a file");
+    assert!(
+        !dir.join(".claudeignore").exists(),
+        "dry run created a file"
+    );
+    assert!(
+        !dir.join(".cursorignore").exists(),
+        "dry run created a file"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -178,10 +216,16 @@ fn test_report_markdown_and_fail_under_gate() {
 
     // A threshold above the maximum must fail; zero must always pass.
     let strict = run(&["report", dir.to_str().unwrap(), "--fail-under", "101"]);
-    assert!(!strict.status.success(), "--fail-under 101 should fail the gate");
+    assert!(
+        !strict.status.success(),
+        "--fail-under 101 should fail the gate"
+    );
 
     let lenient = run(&["report", dir.to_str().unwrap(), "--fail-under", "0"]);
-    assert!(lenient.status.success(), "--fail-under 0 should always pass");
+    assert!(
+        lenient.status.success(),
+        "--fail-under 0 should always pass"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -231,7 +275,10 @@ fn test_compile_keeps_content_of_repeated_headings() {
 fn test_compile_without_rule_file_fails_cleanly() {
     let dir = workspace("compilenone");
     let out = run(&["compile", dir.to_str().unwrap()]);
-    assert!(!out.status.success(), "compile should fail without a rule file");
+    assert!(
+        !out.status.success(),
+        "compile should fail without a rule file"
+    );
     assert!(String::from_utf8_lossy(&out.stderr).contains("No AGENTS.md"));
     let _ = fs::remove_dir_all(&dir);
 }
@@ -253,7 +300,8 @@ fn test_ci_does_not_clobber_existing_workflow() {
     assert!(out.status.success());
     assert!(fs::read_to_string(&wf).unwrap().contains("--fail-under"));
     assert_eq!(
-        fs::read_to_string(dir.join(".github/workflows/agentprof-audit.yml.agentprof.bak")).unwrap(),
+        fs::read_to_string(dir.join(".github/workflows/agentprof-audit.yml.agentprof.bak"))
+            .unwrap(),
         "name: mine\n"
     );
 
@@ -273,7 +321,12 @@ fn test_scan_ignores_secrets_inside_dependency_directories() {
     let value = assert_valid_json(&out, "scan");
     let risks = value["workspace"]["secret_risks"].as_array().unwrap();
 
-    assert_eq!(risks.len(), 1, "expected only the top-level .env: {:?}", risks);
+    assert_eq!(
+        risks.len(),
+        1,
+        "expected only the top-level .env: {:?}",
+        risks
+    );
     assert_eq!(risks[0]["relative_path"], ".env");
 
     let _ = fs::remove_dir_all(&dir);
@@ -286,7 +339,12 @@ fn test_env_example_is_not_reported_as_a_secret() {
 
     let out = run(&["scan", dir.to_str().unwrap(), "--json"]);
     let value = assert_valid_json(&out, "scan");
-    assert!(value["workspace"]["secret_risks"].as_array().unwrap().is_empty());
+    assert!(
+        value["workspace"]["secret_risks"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -299,7 +357,10 @@ fn test_global_path_flag_and_positional_both_work() {
     fs::write(dir.join("AGENTS.md"), "# Rules\n").unwrap();
     let path = dir.to_str().unwrap();
 
-    for args in [vec!["context", "--path", path, "--json"], vec!["context", path, "--json"]] {
+    for args in [
+        vec!["context", "--path", path, "--json"],
+        vec!["context", path, "--json"],
+    ] {
         let out = run(&args);
         let value = assert_valid_json(&out, &args.join(" "));
         assert_eq!(value["total_files"].as_u64().unwrap(), 1, "for {:?}", args);
@@ -315,10 +376,17 @@ fn test_wrap_propagates_exit_code_and_env() {
     assert!(stdout(&ok).contains("Flight Recorder Summary"));
 
     let failing = run(&["wrap", "sh", "-c", "exit 42"]);
-    assert_eq!(failing.status.code(), Some(42), "exit code was not propagated");
+    assert_eq!(
+        failing.status.code(),
+        Some(42),
+        "exit code was not propagated"
+    );
 
     let env = run(&["wrap", "sh", "-c", "printf %s \"$AGENTPROF_FAST_PATH\""]);
-    assert!(stdout(&env).contains('1'), "fast-path env var was not injected");
+    assert!(
+        stdout(&env).contains('1'),
+        "fast-path env var was not injected"
+    );
 }
 
 #[test]
@@ -346,7 +414,11 @@ fn test_mcp_reports_no_invented_token_counts() {
         .expect("workspace server not discovered");
 
     // An unmeasured server must report null, not a guessed number.
-    assert!(server["schema_tokens"].is_null(), "invented a token count: {}", server);
+    assert!(
+        server["schema_tokens"].is_null(),
+        "invented a token count: {}",
+        server
+    );
     assert!(server["tool_count"].is_null());
 
     let _ = fs::remove_dir_all(&dir);
@@ -391,7 +463,11 @@ fn test_skills_report_has_no_duplicate_entries() {
     let total = paths.len();
     paths.sort_unstable();
     paths.dedup();
-    assert_eq!(total, paths.len(), "the same skill was counted more than once");
+    assert_eq!(
+        total,
+        paths.len(),
+        "the same skill was counted more than once"
+    );
 }
 
 #[test]
@@ -415,7 +491,10 @@ fn test_generated_ci_workflow_is_valid_yaml_shape() {
     assert!(yaml.contains("--fail-under 85"), "threshold not embedded");
     assert!(yaml.contains("runs-on: ubuntu-latest"));
     // GitHub expression braces must survive Rust's format! escaping.
-    assert!(yaml.contains("${{ runner.os }}"), "broken GitHub expression syntax");
+    assert!(
+        yaml.contains("${{ runner.os }}"),
+        "broken GitHub expression syntax"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -428,7 +507,11 @@ fn test_repeated_runs_are_stable() {
 
     let first = run(&["context", path.to_str().unwrap(), "--json"]);
     let second = run(&["context", path.to_str().unwrap(), "--json"]);
-    assert_eq!(stdout(&first), stdout(&second), "context output is not deterministic");
+    assert_eq!(
+        stdout(&first),
+        stdout(&second),
+        "context output is not deterministic"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }

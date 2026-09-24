@@ -11,8 +11,8 @@ use crate::core::scanner::WorkspaceContextSummary;
 use crate::core::session_history::SessionHistoryReport;
 use crate::core::shell_bench::ShellBenchmarkResult;
 use crate::core::skills_auditor::SkillsAuditReport;
-use crate::core::workspace_guard::WorkspaceAuditReport;
 use crate::core::tokens::TokenCounter;
+use crate::core::workspace_guard::WorkspaceAuditReport;
 use crate::ui::formatters::Formatters;
 
 pub struct TableRenderer;
@@ -66,11 +66,19 @@ impl TableRenderer {
     }
 
     pub fn render_mcp_report(report: &McpProfileReport) {
-        println!("{}", "\n🔌 Model Context Protocol (MCP) Tool Schema Profiler".bold().cyan());
+        println!(
+            "{}",
+            "\n🔌 Model Context Protocol (MCP) Tool Schema Profiler"
+                .bold()
+                .cyan()
+        );
         println!("{}", "═".repeat(78).dimmed());
 
         if report.servers.is_empty() {
-            println!("{}", "No MCP servers found in any inspected configuration.".dimmed());
+            println!(
+                "{}",
+                "No MCP servers found in any inspected configuration.".dimmed()
+            );
             return;
         }
 
@@ -98,7 +106,11 @@ impl TableRenderer {
             table.add_row(vec![
                 Cell::new(&s.name),
                 Cell::new(&s.scope),
-                Cell::new(s.tool_count.map(|c| c.to_string()).unwrap_or_else(|| dash.clone())),
+                Cell::new(
+                    s.tool_count
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| dash.clone()),
+                ),
                 Cell::new(
                     s.schema_tokens
                         .map(Formatters::format_tokens)
@@ -113,7 +125,9 @@ impl TableRenderer {
         if report.measured_server_count > 0 {
             println!(
                 "Measured Schema Load: {} tokens across {} of {} servers ({:.1}% of a 128k context)",
-                Formatters::format_tokens(report.measured_schema_tokens).bold().yellow(),
+                Formatters::format_tokens(report.measured_schema_tokens)
+                    .bold()
+                    .yellow(),
                 report.measured_server_count.bold(),
                 report.total_servers.bold(),
                 TokenCounter::context_percentage(report.measured_schema_tokens, 128_000)
@@ -155,7 +169,12 @@ impl TableRenderer {
     }
 
     pub fn render_skills_report(report: &SkillsAuditReport) {
-        println!("{}", "\n🎯 Agent Skills & Keyword Collision Auditor".bold().cyan());
+        println!(
+            "{}",
+            "\n🎯 Agent Skills & Keyword Collision Auditor"
+                .bold()
+                .cyan()
+        );
         println!("{}", "═".repeat(78).dimmed());
 
         println!(
@@ -164,16 +183,29 @@ impl TableRenderer {
         );
         println!(
             "Total Skills Corpus:     {} tokens (Avg: {} tokens/skill)",
-            Formatters::format_tokens(report.total_tokens).bold().yellow(),
+            Formatters::format_tokens(report.total_tokens)
+                .bold()
+                .yellow(),
             report.average_tokens.to_string().dimmed()
         );
         println!(
             "Bloated Skills (>2.5k):  {}",
-            if report.bloated_skills_count > 0 { format!("🚨 {} skills", report.bloated_skills_count).red().to_string() } else { "✅ None".green().to_string() }
+            if report.bloated_skills_count > 0 {
+                format!("🚨 {} skills", report.bloated_skills_count)
+                    .red()
+                    .to_string()
+            } else {
+                "✅ None".green().to_string()
+            }
         );
 
         if !report.collisions.is_empty() {
-            println!("\n{}", "⚠️ Trigger Keyword Collisions (Skills competing for identical intents):".bold().yellow());
+            println!(
+                "\n{}",
+                "⚠️ Trigger Keyword Collisions (Skills competing for identical intents):"
+                    .bold()
+                    .yellow()
+            );
             let mut table = Table::new();
             table
                 .load_preset(UTF8_FULL)
@@ -192,7 +224,11 @@ impl TableRenderer {
                 };
 
                 let skills_summary = if c.colliding_skills.len() > 4 {
-                    format!("{}, +{} more", c.colliding_skills[..4].join(", "), c.colliding_skills.len() - 4)
+                    format!(
+                        "{}, +{} more",
+                        c.colliding_skills[..4].join(", "),
+                        c.colliding_skills.len() - 4
+                    )
                 } else {
                     c.colliding_skills.join(", ")
                 };
@@ -210,17 +246,31 @@ impl TableRenderer {
             println!("\n{}", "Top 5 Heaviest Skills:".bold());
             for s in report.top_heavy_skills.iter().take(5) {
                 let badge = if s.is_bloated { "🚨 Bloated" } else { "✅" };
-                println!("  • {:<28} -> {} tokens ({} lines) [{}]", s.name.bold(), Formatters::format_tokens(s.tokens).yellow(), s.lines, badge);
+                println!(
+                    "  • {:<28} -> {} tokens ({} lines) [{}]",
+                    s.name.bold(),
+                    Formatters::format_tokens(s.tokens).yellow(),
+                    s.lines,
+                    badge
+                );
             }
         }
     }
 
     pub fn render_session_history(report: &SessionHistoryReport) {
-        println!("{}", "\n📉 Agent Session History & Loop Thrash Diagnostics".bold().cyan());
+        println!(
+            "{}",
+            "\n📉 Agent Session History & Loop Thrash Diagnostics"
+                .bold()
+                .cyan()
+        );
         println!("{}", "═".repeat(78).dimmed());
 
         if report.total_sessions_found == 0 {
-            println!("{}", "No agent session transcripts found under ~/.claude/projects/.".dimmed());
+            println!(
+                "{}",
+                "No agent session transcripts found under ~/.claude/projects/.".dimmed()
+            );
             return;
         }
 
@@ -233,7 +283,10 @@ impl TableRenderer {
             format!("{} analyzed", report.sessions_analyzed)
         };
         println!("  • Session Transcripts:     {}", coverage.bold());
-        println!("  • User Turns (analyzed):   {}", report.total_turns.bold().cyan());
+        println!(
+            "  • User Turns (analyzed):   {}",
+            report.total_turns.bold().cyan()
+        );
         if report.prompt_history_entries > 0 {
             println!(
                 "  • Prompt History Entries:  {}",
@@ -249,8 +302,12 @@ impl TableRenderer {
         );
         println!(
             "  • Tokens (cache w / r):    {} / {}",
-            Formatters::format_tokens(u.cache_creation_tokens).bold().magenta(),
-            Formatters::format_tokens(u.cache_read_tokens).bold().green()
+            Formatters::format_tokens(u.cache_creation_tokens)
+                .bold()
+                .magenta(),
+            Formatters::format_tokens(u.cache_read_tokens)
+                .bold()
+                .green()
         );
         println!(
             "  • Total Tokens:            {}",
@@ -258,13 +315,20 @@ impl TableRenderer {
         );
         println!(
             "  • Est. Spend:              {} {}",
-            Formatters::format_currency(report.total_estimated_cost_usd).bold().green(),
+            Formatters::format_currency(report.total_estimated_cost_usd)
+                .bold()
+                .green(),
             format!("({})", report.pricing_label).dimmed()
         );
         println!(
             "  • Loop Thrash Incidents:   {}",
             if report.loop_thrash_incidents > 0 {
-                format!("🚨 {} session(s) with repeated identical calls", report.loop_thrash_incidents).red().to_string()
+                format!(
+                    "🚨 {} session(s) with repeated identical calls",
+                    report.loop_thrash_incidents
+                )
+                .red()
+                .to_string()
             } else {
                 "✅ 0 detected".green().to_string()
             }
@@ -311,7 +375,12 @@ impl TableRenderer {
     }
 
     pub fn render_agent_profiles(profiles: &[AgentPlatformProfile]) {
-        println!("{}", "\n🤖 Agent Platform Profiler (OpenCode / Claude / Grok)".bold().cyan());
+        println!(
+            "{}",
+            "\n🤖 Agent Platform Profiler (OpenCode / Claude / Grok)"
+                .bold()
+                .cyan()
+        );
         println!("{}", "═".repeat(78).dimmed());
 
         let mut table = Table::new();
@@ -334,7 +403,11 @@ impl TableRenderer {
                 Cell::new("❌ No").fg(Color::DarkGrey)
             };
 
-            let config_count_str = format!("{} files ({} skills)", p.config_files.len(), p.total_skills_count);
+            let config_count_str = format!(
+                "{} files ({} skills)",
+                p.config_files.len(),
+                p.total_skills_count
+            );
             let rating_cell = if p.fixed_payload_percentage < 3.0 {
                 Cell::new(p.health_rating).fg(Color::Green)
             } else if p.fixed_payload_percentage < 7.0 {
@@ -357,16 +430,33 @@ impl TableRenderer {
 
         for p in profiles {
             if !p.config_files.is_empty() || !p.detected_mcp_servers.is_empty() {
-                println!("\n{} [{} Context Details]:", "▶".bold().blue(), p.platform.name().bold());
+                println!(
+                    "\n{} [{} Context Details]:",
+                    "▶".bold().blue(),
+                    p.platform.name().bold()
+                );
                 for f in &p.config_files {
                     let scope = if f.is_global { "Global" } else { "Workspace" };
-                    println!("  • {:<24} ({}) -> {} tokens ({} lines)", f.name.bold(), scope.dimmed(), Formatters::format_tokens(f.tokens).yellow(), f.lines);
+                    println!(
+                        "  • {:<24} ({}) -> {} tokens ({} lines)",
+                        f.name.bold(),
+                        scope.dimmed(),
+                        Formatters::format_tokens(f.tokens).yellow(),
+                        f.lines
+                    );
                 }
                 if !p.detected_mcp_servers.is_empty() {
-                    println!("  • MCP Servers: {}", p.detected_mcp_servers.join(", ").cyan());
+                    println!(
+                        "  • MCP Servers: {}",
+                        p.detected_mcp_servers.join(", ").cyan()
+                    );
                 }
                 if p.total_skills_count > 0 {
-                    println!("  • Discovered Skills: {} skills ({} total tokens)", p.total_skills_count, Formatters::format_tokens(p.total_skills_tokens));
+                    println!(
+                        "  • Discovered Skills: {} skills ({} total tokens)",
+                        p.total_skills_count,
+                        Formatters::format_tokens(p.total_skills_tokens)
+                    );
                 }
                 for rec in &p.recommendations {
                     println!("  💡 Recommendation: {}", rec.dimmed());
@@ -376,7 +466,10 @@ impl TableRenderer {
     }
 
     pub fn render_context_summary(summary: &WorkspaceContextSummary) {
-        println!("{}", "\n🤖 AI Agent Context & Instruction Budget".bold().cyan());
+        println!(
+            "{}",
+            "\n🤖 AI Agent Context & Instruction Budget".bold().cyan()
+        );
         println!("{}", "═".repeat(78).dimmed());
 
         if summary.files.is_empty() {
@@ -399,7 +492,9 @@ impl TableRenderer {
 
         for file in &summary.files {
             let status_cell = match file.status {
-                crate::core::scanner::HealthStatus::Optimal => Cell::new("Optimal").fg(Color::Green),
+                crate::core::scanner::HealthStatus::Optimal => {
+                    Cell::new("Optimal").fg(Color::Green)
+                }
                 crate::core::scanner::HealthStatus::Warning => Cell::new("Heavy").fg(Color::Yellow),
                 crate::core::scanner::HealthStatus::Bloated => Cell::new("Bloated").fg(Color::Red),
             };
@@ -417,21 +512,31 @@ impl TableRenderer {
 
         println!(
             "Total Overhead: {} tokens across {} files ({:.1}% of 128k context)",
-            Formatters::format_tokens(summary.total_tokens_cl100k).bold().yellow(),
+            Formatters::format_tokens(summary.total_tokens_cl100k)
+                .bold()
+                .yellow(),
             summary.total_files.bold(),
             summary.pct_of_128k.bold().magenta()
         );
         println!(
             "Estimated Turn Cost: {} per 100 prompt turns",
-            Formatters::format_currency(summary.est_cost_per_100_turns).bold().green()
+            Formatters::format_currency(summary.est_cost_per_100_turns)
+                .bold()
+                .green()
         );
     }
 
     pub fn render_shell_benchmark(bench: &ShellBenchmarkResult) {
-        println!("{}", "\n⚡ Subshell Spawn & Tool Execution Latency".bold().cyan());
+        println!(
+            "{}",
+            "\n⚡ Subshell Spawn & Tool Execution Latency".bold().cyan()
+        );
         println!("{}", "═".repeat(78).dimmed());
 
-        println!("  • Shell:                             {}", bench.shell_name.bold());
+        println!(
+            "  • Shell:                             {}",
+            bench.shell_name.bold()
+        );
 
         if let Some(err) = &bench.error {
             println!("  {}", format!("⚠️  {}", err).yellow());
@@ -485,7 +590,10 @@ impl TableRenderer {
     }
 
     pub fn render_omz_report(report: &OmzProfileReport) {
-        println!("{}", "\n🐚 Oh My Zsh & Shell Plugin Latency Audit".bold().cyan());
+        println!(
+            "{}",
+            "\n🐚 Oh My Zsh & Shell Plugin Latency Audit".bold().cyan()
+        );
         println!("{}", "═".repeat(78).dimmed());
 
         if !report.is_omz_installed {
@@ -495,7 +603,9 @@ impl TableRenderer {
 
         println!(
             "Total Shell Startup Time:   {}",
-            Formatters::format_ms(report.total_shell_startup_ms).bold().yellow()
+            Formatters::format_ms(report.total_shell_startup_ms)
+                .bold()
+                .yellow()
         );
         if let Some(theme) = &report.theme_name {
             println!("Theme:                      {}", theme.bold().blue());
@@ -548,7 +658,10 @@ impl TableRenderer {
         }
 
         if !report.slow_hooks.is_empty() {
-            println!("\n{}", "Detected Slow External Evals / Initializers:".bold());
+            println!(
+                "\n{}",
+                "Detected Slow External Evals / Initializers:".bold()
+            );
             for hook in &report.slow_hooks {
                 let timing = hook
                     .latency_ms
@@ -568,25 +681,54 @@ impl TableRenderer {
         println!("{}", "\n📁 Workspace Ignore & Security Guard".bold().cyan());
         println!("{}", "═".repeat(78).dimmed());
 
-        let claude_lbl = if audit.has_claudeignore { "✅ Present".green().to_string() } else { "❌ Missing".red().to_string() };
-        let cursor_lbl = if audit.has_cursorignore { "✅ Present".green().to_string() } else { "❌ Missing".red().to_string() };
-        let git_lbl = if audit.has_gitignore { "✅ Present".green().to_string() } else { "❌ Missing".yellow().to_string() };
+        let claude_lbl = if audit.has_claudeignore {
+            "✅ Present".green().to_string()
+        } else {
+            "❌ Missing".red().to_string()
+        };
+        let cursor_lbl = if audit.has_cursorignore {
+            "✅ Present".green().to_string()
+        } else {
+            "❌ Missing".red().to_string()
+        };
+        let git_lbl = if audit.has_gitignore {
+            "✅ Present".green().to_string()
+        } else {
+            "❌ Missing".yellow().to_string()
+        };
 
         println!("  • .claudeignore:  {}", claude_lbl);
         println!("  • .cursorignore:  {}", cursor_lbl);
         println!("  • .gitignore:     {}", git_lbl);
 
         if !audit.secret_risks.is_empty() {
-            println!("\n{}", "🚨 Exposed Secrets Accessible to Agent Search Tools:".bold().red());
+            println!(
+                "\n{}",
+                "🚨 Exposed Secrets Accessible to Agent Search Tools:"
+                    .bold()
+                    .red()
+            );
             for s in &audit.secret_risks {
-                println!("  • [{}] {} -> {}", s.risk_level, s.relative_path.bold(), s.description.dimmed());
+                println!(
+                    "  • [{}] {} -> {}",
+                    s.risk_level,
+                    s.relative_path.bold(),
+                    s.description.dimmed()
+                );
             }
         }
 
         if !audit.heavy_directories.is_empty() {
-            println!("\n{}", "Unignored Heavy Build / Cache Directories:".bold().yellow());
+            println!(
+                "\n{}",
+                "Unignored Heavy Build / Cache Directories:".bold().yellow()
+            );
             for d in &audit.heavy_directories {
-                let status = if d.is_ignored_by_claude { "✅ Ignored" } else { "❌ Unignored" };
+                let status = if d.is_ignored_by_claude {
+                    "✅ Ignored"
+                } else {
+                    "❌ Unignored"
+                };
                 // The counter stops at a cap, so show "N+" rather than implying
                 // the directory holds exactly N files.
                 let count = if d.estimated_files >= crate::core::workspace_guard::FILE_COUNT_CAP {

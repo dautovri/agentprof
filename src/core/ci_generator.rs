@@ -61,7 +61,11 @@ impl CiGenerator {
 
         Ok(CiResult {
             path: workflow_file,
-            outcome: if exists { CiWriteOutcome::Overwritten } else { CiWriteOutcome::Created },
+            outcome: if exists {
+                CiWriteOutcome::Overwritten
+            } else {
+                CiWriteOutcome::Created
+            },
             backup,
         })
     }
@@ -139,7 +143,10 @@ mod tests {
 
         let result = CiGenerator::generate_github_action(&dir, 70, false).unwrap();
         assert_eq!(result.outcome, CiWriteOutcome::Preserved);
-        assert_eq!(fs::read_to_string(&wf).unwrap(), "name: my custom workflow\n");
+        assert_eq!(
+            fs::read_to_string(&wf).unwrap(),
+            "name: my custom workflow\n"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -154,7 +161,10 @@ mod tests {
         let result = CiGenerator::generate_github_action(&dir, 70, true).unwrap();
         assert_eq!(result.outcome, CiWriteOutcome::Overwritten);
         let backup = result.backup.expect("expected a backup");
-        assert_eq!(fs::read_to_string(backup).unwrap(), "name: my custom workflow\n");
+        assert_eq!(
+            fs::read_to_string(backup).unwrap(),
+            "name: my custom workflow\n"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 }

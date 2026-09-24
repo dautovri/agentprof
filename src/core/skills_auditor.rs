@@ -1,8 +1,8 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::core::tokens::TokenCounter;
@@ -41,10 +41,37 @@ pub struct SkillsAuditReport {
 
 /// Intents that commonly collide across installed skills.
 const COMMON_TRIGGERS: &[&str] = &[
-    "review", "qa", "test", "security", "audit", "design", "diagram", "deploy", "ship",
-    "screenshot", "ios", "swift", "mcp", "analytics", "scrape", "retro", "benchmark",
-    "canary", "freeze", "brand", "landing", "pricing", "refactor", "migrate", "release",
-    "debug", "docs", "documentation", "plan", "lint", "format",
+    "review",
+    "qa",
+    "test",
+    "security",
+    "audit",
+    "design",
+    "diagram",
+    "deploy",
+    "ship",
+    "screenshot",
+    "ios",
+    "swift",
+    "mcp",
+    "analytics",
+    "scrape",
+    "retro",
+    "benchmark",
+    "canary",
+    "freeze",
+    "brand",
+    "landing",
+    "pricing",
+    "refactor",
+    "migrate",
+    "release",
+    "debug",
+    "docs",
+    "documentation",
+    "plan",
+    "lint",
+    "format",
 ];
 
 pub struct SkillsAuditor;
@@ -63,7 +90,10 @@ impl SkillsAuditor {
         // 2. OpenCode skills
         let opencode_skills = home.join(".config/opencode/skills");
         if opencode_skills.exists() {
-            skill_paths.push((opencode_skills, "OpenCode (~/.config/opencode/skills)".to_string()));
+            skill_paths.push((
+                opencode_skills,
+                "OpenCode (~/.config/opencode/skills)".to_string(),
+            ));
         }
 
         // 3. Workspace skills
@@ -73,7 +103,10 @@ impl SkillsAuditor {
         }
         let ws_opencode_skills = workspace_root.join(".opencode/skills");
         if ws_opencode_skills.exists() {
-            skill_paths.push((ws_opencode_skills, "Workspace (.opencode/skills)".to_string()));
+            skill_paths.push((
+                ws_opencode_skills,
+                "Workspace (.opencode/skills)".to_string(),
+            ));
         }
 
         let mut all_skills = Vec::new();
@@ -236,7 +269,11 @@ impl SkillsAuditor {
                 let mut sorted_skills: Vec<String> = skill_set.into_iter().collect();
                 sorted_skills.sort();
 
-                let severity = if sorted_skills.len() >= 6 { "🚨 High Overlap".to_string() } else { "⚠️ Moderate Overlap".to_string() };
+                let severity = if sorted_skills.len() >= 6 {
+                    "🚨 High Overlap".to_string()
+                } else {
+                    "⚠️ Moderate Overlap".to_string()
+                };
                 collisions.push(SkillCollision {
                     keyword: kw,
                     colliding_skills: sorted_skills,
@@ -263,7 +300,11 @@ mod tests {
             "For data-heavy dashboards and portfolios using the latest layouts.",
         );
         assert!(!triggers.contains(&"ios".to_string()), "got {:?}", triggers);
-        assert!(!triggers.contains(&"test".to_string()), "got {:?}", triggers);
+        assert!(
+            !triggers.contains(&"test".to_string()),
+            "got {:?}",
+            triggers
+        );
     }
 
     #[test]

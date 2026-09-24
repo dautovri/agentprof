@@ -10,7 +10,12 @@ use crate::ui::tables::TableRenderer;
 pub struct McpCommand;
 
 impl McpCommand {
-    pub fn execute(workspace_root: &Path, probe: bool, probe_timeout: u64, json: bool) -> Result<()> {
+    pub fn execute(
+        workspace_root: &Path,
+        probe: bool,
+        probe_timeout: u64,
+        json: bool,
+    ) -> Result<()> {
         if probe && !json {
             println!(
                 "{}",

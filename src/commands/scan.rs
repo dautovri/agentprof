@@ -1,6 +1,6 @@
-use std::path::Path;
 use anyhow::Result;
 use owo_colors::OwoColorize;
+use std::path::Path;
 
 use crate::core::mcp_profiler::McpProfiler;
 use crate::core::omz_profiler::OmzProfiler;
@@ -15,7 +15,10 @@ pub struct ScanCommand;
 impl ScanCommand {
     pub fn execute(target_path: &Path, json: bool) -> Result<()> {
         if !json {
-            println!("{}", "⚡ Running agentprof full workspace & shell scan...".bold());
+            println!(
+                "{}",
+                "⚡ Running agentprof full workspace & shell scan...".bold()
+            );
         }
 
         let context_summary = InstructionScanner::scan_workspace(target_path)?;
@@ -51,27 +54,45 @@ impl ScanCommand {
         let mut rec_count = 0;
         if !bench_result.has_agent_fast_path {
             rec_count += 1;
-            println!("  [{}] Add subshell fast-path guard: `agentprof fix --shell`", rec_count);
+            println!(
+                "  [{}] Add subshell fast-path guard: `agentprof fix --shell`",
+                rec_count
+            );
         }
         if !workspace_audit.has_claudeignore || workspace_audit.total_exposed_secrets > 0 {
             rec_count += 1;
-            println!("  [{}] Generate safe `.claudeignore`: `agentprof fix --ignore`", rec_count);
+            println!(
+                "  [{}] Generate safe `.claudeignore`: `agentprof fix --ignore`",
+                rec_count
+            );
         }
         if context_summary.total_tokens_cl100k > 3000 {
             rec_count += 1;
-            println!("  [{}] Compile monolithic rules into JIT modules: `agentprof compile`", rec_count);
+            println!(
+                "  [{}] Compile monolithic rules into JIT modules: `agentprof compile`",
+                rec_count
+            );
         }
         if mcp_report.measured_schema_tokens > 5000 {
             rec_count += 1;
-            println!("  [{}] Profile & prune heavy MCP tool schemas: `agentprof mcp`", rec_count);
+            println!(
+                "  [{}] Profile & prune heavy MCP tool schemas: `agentprof mcp`",
+                rec_count
+            );
         }
         if skills_report.bloated_skills_count > 0 {
             rec_count += 1;
-            println!("  [{}] Audit bloated agent skills: `agentprof skills`", rec_count);
+            println!(
+                "  [{}] Audit bloated agent skills: `agentprof skills`",
+                rec_count
+            );
         }
 
         if rec_count == 0 {
-            println!("  {}", "✅ Workspace and shell are fully optimized for AI agents!".green());
+            println!(
+                "  {}",
+                "✅ Workspace and shell are fully optimized for AI agents!".green()
+            );
         }
 
         println!();

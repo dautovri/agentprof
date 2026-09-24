@@ -1,9 +1,9 @@
-use std::path::Path;
 use anyhow::Result;
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, Color, ContentArrangement, Table};
 use owo_colors::OwoColorize;
+use std::path::Path;
 
 use crate::core::rule_linter::RuleLinter;
 
@@ -12,7 +12,10 @@ pub struct LintCommand;
 impl LintCommand {
     pub fn execute(workspace_root: &Path, json: bool) -> Result<()> {
         if !json {
-            println!("{}", "🔍 Linting workspace instruction files & checking for contradictions...".bold());
+            println!(
+                "{}",
+                "🔍 Linting workspace instruction files & checking for contradictions...".bold()
+            );
         }
 
         let report = RuleLinter::lint_workspace(workspace_root)?;
@@ -23,11 +26,19 @@ impl LintCommand {
         }
 
         if report.issues.is_empty() {
-            println!("{}", "✅ No rule contradictions or instruction anti-patterns detected!".green().bold());
+            println!(
+                "{}",
+                "✅ No rule contradictions or instruction anti-patterns detected!"
+                    .green()
+                    .bold()
+            );
             return Ok(());
         }
 
-        println!("{}", "\n📋 Instruction Quality & Conflict Report".bold().cyan());
+        println!(
+            "{}",
+            "\n📋 Instruction Quality & Conflict Report".bold().cyan()
+        );
         println!("{}", "═".repeat(78).dimmed());
 
         let mut table = Table::new();
@@ -45,9 +56,15 @@ impl LintCommand {
 
         for issue in &report.issues {
             let sev_cell = match issue.severity {
-                crate::core::rule_linter::LintSeverity::Error => Cell::new("🚨 Conflict").fg(Color::Red),
-                crate::core::rule_linter::LintSeverity::Warning => Cell::new("⚠️ Warning").fg(Color::Yellow),
-                crate::core::rule_linter::LintSeverity::Info => Cell::new("ℹ️ Info").fg(Color::Blue),
+                crate::core::rule_linter::LintSeverity::Error => {
+                    Cell::new("🚨 Conflict").fg(Color::Red)
+                }
+                crate::core::rule_linter::LintSeverity::Warning => {
+                    Cell::new("⚠️ Warning").fg(Color::Yellow)
+                }
+                crate::core::rule_linter::LintSeverity::Info => {
+                    Cell::new("ℹ️ Info").fg(Color::Blue)
+                }
             };
 
             table.add_row(vec![

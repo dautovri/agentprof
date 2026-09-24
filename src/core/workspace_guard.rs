@@ -152,8 +152,9 @@ impl WorkspaceGuard {
 
         let mut recommendations = Vec::new();
         if !has_claudeignore {
-            recommendations
-                .push("Missing `.claudeignore`. Generate one with `agentprof fix --ignore`.".to_string());
+            recommendations.push(
+                "Missing `.claudeignore`. Generate one with `agentprof fix --ignore`.".to_string(),
+            );
         }
         if total_exposed_secrets > 0 {
             recommendations.push(format!(
@@ -302,7 +303,10 @@ impl WorkspaceGuard {
             })
             .unwrap_or(false);
 
-        if root.join("Package.swift").exists() || root.join("project.yml").exists() || has_xcode_project {
+        if root.join("Package.swift").exists()
+            || root.join("project.yml").exists()
+            || has_xcode_project
+        {
             types.push("Swift / iOS / macOS (Xcode)".to_string());
         }
         if root.join("Cargo.toml").exists() {
@@ -380,7 +384,11 @@ mod tests {
 
         fs::write(dir.join(".claudeignore"), "node_modules/\n").unwrap();
         let matcher = WorkspaceGuard::build_matcher(&dir, &dir.join(".claudeignore"));
-        assert!(WorkspaceGuard::is_ignored(&matcher, &dir.join("node_modules"), true));
+        assert!(WorkspaceGuard::is_ignored(
+            &matcher,
+            &dir.join("node_modules"),
+            true
+        ));
         let _ = fs::remove_dir_all(&dir);
     }
 

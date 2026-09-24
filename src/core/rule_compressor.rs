@@ -1,8 +1,8 @@
-use std::fs;
-use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use crate::core::tokens::TokenCounter;
 
@@ -122,8 +122,14 @@ impl RuleCompressor {
                 .with_context(|| format!("Failed to back up {}", file_path.display()))?;
             file_path.to_path_buf()
         } else {
-            let file_stem = file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("rules");
-            let ext = file_path.extension().and_then(|s| s.to_str()).unwrap_or("md");
+            let file_stem = file_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("rules");
+            let ext = file_path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("md");
             file_path.with_file_name(format!("{}.compressed.{}", file_stem, ext))
         };
 

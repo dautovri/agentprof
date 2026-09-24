@@ -1,8 +1,8 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,17 +44,29 @@ pub struct LintReport {
 /// Mutually exclusive conventions that should not be mandated by two different
 /// instruction files at once.
 const CONTRADICTION_PAIRS: &[(&str, &str, &str)] = &[
-    ("ObservableObject", "@Observable", "SwiftUI state management conflict"),
+    (
+        "ObservableObject",
+        "@Observable",
+        "SwiftUI state management conflict",
+    ),
     ("@StateObject", "@State", "SwiftUI state ownership conflict"),
     ("SwiftData", "CoreData", "Persistence framework conflict"),
-    ("NavigationView", "NavigationStack", "SwiftUI navigation API conflict"),
+    (
+        "NavigationView",
+        "NavigationStack",
+        "SwiftUI navigation API conflict",
+    ),
     ("npm install", "pnpm install", "Package manager conflict"),
     ("yarn add", "pnpm add", "Package manager conflict"),
     ("styled-components", "tailwind", "Styling approach conflict"),
     ("Redux", "Zustand", "State library conflict"),
     ("unittest", "pytest", "Python test framework conflict"),
     ("black", "ruff format", "Python formatter conflict"),
-    ("tabs for indentation", "spaces for indentation", "Indentation conflict"),
+    (
+        "tabs for indentation",
+        "spaces for indentation",
+        "Indentation conflict",
+    ),
 ];
 
 pub struct RuleLinter;
@@ -65,7 +77,9 @@ impl RuleLinter {
         let mut files_scanned = 0;
         let mut file_contents = Vec::new();
 
-        let canonical_root = workspace_root.canonicalize().unwrap_or_else(|_| workspace_root.to_path_buf());
+        let canonical_root = workspace_root
+            .canonicalize()
+            .unwrap_or_else(|_| workspace_root.to_path_buf());
 
         for entry in WalkDir::new(&canonical_root)
             .follow_links(false)
@@ -84,7 +98,10 @@ impl RuleLinter {
             };
 
             let path_str = path.to_string_lossy();
-            if path_str.contains("/.git/") || path_str.contains("/target/") || path_str.contains("/node_modules/") {
+            if path_str.contains("/.git/")
+                || path_str.contains("/target/")
+                || path_str.contains("/node_modules/")
+            {
                 continue;
             }
 
@@ -110,7 +127,8 @@ impl RuleLinter {
         }
 
         // Cross-file contradiction check
-        let contradictions_found = Self::check_cross_file_contradictions(&file_contents, &mut issues);
+        let contradictions_found =
+            Self::check_cross_file_contradictions(&file_contents, &mut issues);
 
         let total_issues = issues.len();
         Ok(LintReport {
@@ -181,7 +199,8 @@ impl RuleLinter {
                     line_number: line_num,
                     severity: LintSeverity::Info,
                     code: "DENSE_PARAGRAPH".to_string(),
-                    message: "Overly long bullet point (>100 words) reduces directive adherence.".to_string(),
+                    message: "Overly long bullet point (>100 words) reduces directive adherence."
+                        .to_string(),
                     suggested_fix: "Break into 2-3 concise sub-bullet constraints.".to_string(),
                 });
             }
@@ -239,7 +258,8 @@ impl RuleLinter {
 
                 // Contradiction patterns
                 for &(p1, p2, desc) in CONTRADICTION_PAIRS {
-                    if (c1.contains(p1) && c2.contains(p2)) || (c1.contains(p2) && c2.contains(p1)) {
+                    if (c1.contains(p1) && c2.contains(p2)) || (c1.contains(p2) && c2.contains(p1))
+                    {
                         count += 1;
                         issues.push(LintIssue {
                             file: format!("{} vs {}", f1, f2),
@@ -270,7 +290,11 @@ mod tests {
     #[test]
     fn test_vague_rule_is_flagged_with_list_markers() {
         let issues = lint("- Follow best practices.\n");
-        assert!(issues.iter().any(|i| i.code == "VAGUE_RULE"), "{:?}", issues);
+        assert!(
+            issues.iter().any(|i| i.code == "VAGUE_RULE"),
+            "{:?}",
+            issues
+        );
     }
 
     #[test]
@@ -283,7 +307,10 @@ mod tests {
     #[test]
     fn test_duplicate_directive_is_reported_once() {
         let content = "- Always run cargo fmt before committing changes\n- Always run cargo fmt before committing changes\n";
-        let dups: Vec<_> = lint(content).into_iter().filter(|i| i.code == "DUPLICATE_RULE").collect();
+        let dups: Vec<_> = lint(content)
+            .into_iter()
+            .filter(|i| i.code == "DUPLICATE_RULE")
+            .collect();
         assert_eq!(dups.len(), 1);
         assert_eq!(dups[0].line_number, 2);
     }
@@ -291,7 +318,11 @@ mod tests {
     #[test]
     fn test_hedged_absolute_is_flagged() {
         let issues = lint("Never use force unwrap unless the value is a compile-time literal\n");
-        assert!(issues.iter().any(|i| i.code == "HEDGED_ABSOLUTE"), "{:?}", issues);
+        assert!(
+            issues.iter().any(|i| i.code == "HEDGED_ABSOLUTE"),
+            "{:?}",
+            issues
+        );
     }
 
     #[test]
@@ -303,8 +334,14 @@ mod tests {
     #[test]
     fn test_cross_file_contradiction_detected() {
         let files = vec![
-            ("A.md".to_string(), "Use ObservableObject for view models".to_string()),
-            ("B.md".to_string(), "Use @Observable for view models".to_string()),
+            (
+                "A.md".to_string(),
+                "Use ObservableObject for view models".to_string(),
+            ),
+            (
+                "B.md".to_string(),
+                "Use @Observable for view models".to_string(),
+            ),
         ];
         let mut issues = Vec::new();
         let count = RuleLinter::check_cross_file_contradictions(&files, &mut issues);

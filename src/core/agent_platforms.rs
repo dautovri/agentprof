@@ -1,7 +1,7 @@
-use std::fs;
-use std::path::{Path, PathBuf};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::core::tokens::TokenCounter;
@@ -73,7 +73,9 @@ impl AgentPlatformProfiler {
     pub fn profile_opencode(workspace: &Path) -> Result<AgentPlatformProfile> {
         let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
         let global_dir = home.join(".config/opencode");
-        let is_installed = global_dir.exists() || which::which("opencode").is_ok() || workspace.join(".opencode").exists();
+        let is_installed = global_dir.exists()
+            || which::which("opencode").is_ok()
+            || workspace.join(".opencode").exists();
 
         let mut config_files = Vec::new();
         let mut skills = Vec::new();
@@ -82,49 +84,68 @@ impl AgentPlatformProfiler {
 
         // 1. Global config files
         if global_dir.exists() {
-            let files = ["AGENTS.md", "opencode.json", "settings.json", "cli.json", "config.json"];
+            let files = [
+                "AGENTS.md",
+                "opencode.json",
+                "settings.json",
+                "cli.json",
+                "config.json",
+            ];
             for f in files {
                 let p = global_dir.join(f);
                 if p.exists()
-                    && let Ok(c) = fs::read_to_string(&p) {
-                        let tokens = TokenCounter::count_cl100k(&c);
-                        config_files.push(AgentConfigFile {
-                            name: f.to_string(),
-                            path: p.clone(),
-                            relative_path: format!("~/.config/opencode/{}", f),
-                            lines: c.lines().count(),
-                            tokens,
-                            bytes: c.len(),
-                            is_global: true,
-                        });
+                    && let Ok(c) = fs::read_to_string(&p)
+                {
+                    let tokens = TokenCounter::count_cl100k(&c);
+                    config_files.push(AgentConfigFile {
+                        name: f.to_string(),
+                        path: p.clone(),
+                        relative_path: format!("~/.config/opencode/{}", f),
+                        lines: c.lines().count(),
+                        tokens,
+                        bytes: c.len(),
+                        is_global: true,
+                    });
 
-                        // Check for MCP servers in json
-                        if (f == "opencode.json" || f == "config.json" || f == "settings.json") && (c.contains("mcpServers") || c.contains("mcp"))
-                            && let Ok(val) = serde_json::from_str::<serde_json::Value>(&c)
-                                && let Some(mcp) = val.get("mcpServers").or_else(|| val.get("mcp"))
-                                    && let Some(obj) = mcp.as_object() {
-                                        for key in obj.keys() {
-                                            if !detected_mcp_servers.contains(key) {
-                                                detected_mcp_servers.push(key.clone());
-                                            }
-                                        }
-                                    }
+                    // Check for MCP servers in json
+                    if (f == "opencode.json" || f == "config.json" || f == "settings.json")
+                        && (c.contains("mcpServers") || c.contains("mcp"))
+                        && let Ok(val) = serde_json::from_str::<serde_json::Value>(&c)
+                        && let Some(mcp) = val.get("mcpServers").or_else(|| val.get("mcp"))
+                        && let Some(obj) = mcp.as_object()
+                    {
+                        for key in obj.keys() {
+                            if !detected_mcp_servers.contains(key) {
+                                detected_mcp_servers.push(key.clone());
+                            }
+                        }
                     }
+                }
             }
 
             // Global skills in ~/.config/opencode/skills
             let skills_dir = global_dir.join("skills");
             if skills_dir.exists() {
-                for entry in WalkDir::new(&skills_dir).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+                for entry in WalkDir::new(&skills_dir)
+                    .max_depth(3)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
                     if entry.file_name() == "SKILL.md"
-                        && let Ok(content) = fs::read_to_string(entry.path()) {
-                            let skill_name = entry.path().parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "skill".to_string());
-                            skills.push(AgentSkillInfo {
-                                name: skill_name,
-                                path: entry.path().to_path_buf(),
-                                tokens: TokenCounter::count_cl100k(&content),
-                            });
-                        }
+                        && let Ok(content) = fs::read_to_string(entry.path())
+                    {
+                        let skill_name = entry
+                            .path()
+                            .parent()
+                            .and_then(|p| p.file_name())
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "skill".to_string());
+                        skills.push(AgentSkillInfo {
+                            name: skill_name,
+                            path: entry.path().to_path_buf(),
+                            tokens: TokenCounter::count_cl100k(&content),
+                        });
+                    }
                 }
             }
         }
@@ -132,17 +153,18 @@ impl AgentPlatformProfiler {
         // 2. Workspace level instructions
         let ws_agents = workspace.join("AGENTS.md");
         if ws_agents.exists()
-            && let Ok(c) = fs::read_to_string(&ws_agents) {
-                config_files.push(AgentConfigFile {
-                    name: "AGENTS.md (workspace)".to_string(),
-                    path: ws_agents.clone(),
-                    relative_path: "AGENTS.md".to_string(),
-                    lines: c.lines().count(),
-                    tokens: TokenCounter::count_cl100k(&c),
-                    bytes: c.len(),
-                    is_global: false,
-                });
-            }
+            && let Ok(c) = fs::read_to_string(&ws_agents)
+        {
+            config_files.push(AgentConfigFile {
+                name: "AGENTS.md (workspace)".to_string(),
+                path: ws_agents.clone(),
+                relative_path: "AGENTS.md".to_string(),
+                lines: c.lines().count(),
+                tokens: TokenCounter::count_cl100k(&c),
+                bytes: c.len(),
+                is_global: false,
+            });
+        }
 
         let total_skills_tokens: usize = skills.iter().map(|s| s.tokens).sum();
         let total_skills_count = skills.len();
@@ -150,15 +172,20 @@ impl AgentPlatformProfiler {
         let total_fixed_instruction_tokens = total_config_tokens;
 
         let context_window = 128_000;
-        let fixed_payload_percentage = (total_fixed_instruction_tokens as f64 / context_window as f64) * 100.0;
-        let est_turn_cost_usd = crate::core::tokens::Pricing::DEFAULT.input_cost(total_fixed_instruction_tokens);
+        let fixed_payload_percentage =
+            (total_fixed_instruction_tokens as f64 / context_window as f64) * 100.0;
+        let est_turn_cost_usd =
+            crate::core::tokens::Pricing::DEFAULT.input_cost(total_fixed_instruction_tokens);
 
         let mut recommendations = Vec::new();
         if total_fixed_instruction_tokens > 4_000 {
             recommendations.push("Global + local instruction payload exceeds 4k tokens. Prune ~/.config/opencode/AGENTS.md.".to_string());
         }
         if !detected_mcp_servers.is_empty() {
-            recommendations.push(format!("{} MCP server(s) active. Ensure heavy schemas are not loaded unconditionally.", detected_mcp_servers.len()));
+            recommendations.push(format!(
+                "{} MCP server(s) active. Ensure heavy schemas are not loaded unconditionally.",
+                detected_mcp_servers.len()
+            ));
         }
 
         let health_rating = if fixed_payload_percentage < 3.0 {
@@ -172,7 +199,11 @@ impl AgentPlatformProfiler {
         Ok(AgentPlatformProfile {
             platform: AgentPlatformType::OpenCode,
             is_installed,
-            global_config_dir: if global_dir.exists() { Some(global_dir) } else { None },
+            global_config_dir: if global_dir.exists() {
+                Some(global_dir)
+            } else {
+                None
+            },
             config_files,
             skills,
             total_skills_count,
@@ -191,7 +222,9 @@ impl AgentPlatformProfiler {
     pub fn profile_claude(workspace: &Path) -> Result<AgentPlatformProfile> {
         let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
         let global_dir = home.join(".claude");
-        let is_installed = global_dir.exists() || which::which("claude").is_ok() || workspace.join(".claude").exists();
+        let is_installed = global_dir.exists()
+            || which::which("claude").is_ok()
+            || workspace.join(".claude").exists();
 
         let mut config_files = Vec::new();
         let mut skills = Vec::new();
@@ -202,27 +235,38 @@ impl AgentPlatformProfiler {
             // Claude Code's real global config surface. "RTK.md" and "launch.json"
             // used to be listed here — they are not Claude Code files, they were
             // the original author's own personal files leaking into the tool.
-            let files = ["CLAUDE.md", "CLAUDE.local.md", "settings.json", "settings.local.json"];
+            let files = [
+                "CLAUDE.md",
+                "CLAUDE.local.md",
+                "settings.json",
+                "settings.local.json",
+            ];
             for f in files {
                 let p = global_dir.join(f);
                 if p.exists()
-                    && let Ok(c) = fs::read_to_string(&p) {
-                        config_files.push(AgentConfigFile {
-                            name: f.to_string(),
-                            path: p.clone(),
-                            relative_path: format!("~/.claude/{}", f),
-                            lines: c.lines().count(),
-                            tokens: TokenCounter::count_cl100k(&c),
-                            bytes: c.len(),
-                            is_global: true,
-                        });
-                    }
+                    && let Ok(c) = fs::read_to_string(&p)
+                {
+                    config_files.push(AgentConfigFile {
+                        name: f.to_string(),
+                        path: p.clone(),
+                        relative_path: format!("~/.claude/{}", f),
+                        lines: c.lines().count(),
+                        tokens: TokenCounter::count_cl100k(&c),
+                        bytes: c.len(),
+                        is_global: true,
+                    });
+                }
             }
 
             // Measure file history / memory cache
             let hist_dir = global_dir.join("file-history");
             if hist_dir.exists() {
-                for e in WalkDir::new(&hist_dir).max_depth(2).into_iter().filter_map(|e| e.ok()).take(500) {
+                for e in WalkDir::new(&hist_dir)
+                    .max_depth(2)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .take(500)
+                {
                     if let Ok(meta) = e.metadata() {
                         cache_history_size += meta.len() as usize;
                     }
@@ -232,22 +276,37 @@ impl AgentPlatformProfiler {
             // Global skills in ~/.claude/skills
             let skills_dir = global_dir.join("skills");
             if skills_dir.exists() {
-                for entry in WalkDir::new(&skills_dir).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+                for entry in WalkDir::new(&skills_dir)
+                    .max_depth(3)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
                     if entry.file_name() == "SKILL.md"
-                        && let Ok(content) = fs::read_to_string(entry.path()) {
-                            let skill_name = entry.path().parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "skill".to_string());
-                            skills.push(AgentSkillInfo {
-                                name: skill_name,
-                                path: entry.path().to_path_buf(),
-                                tokens: TokenCounter::count_cl100k(&content),
-                            });
-                        }
+                        && let Ok(content) = fs::read_to_string(entry.path())
+                    {
+                        let skill_name = entry
+                            .path()
+                            .parent()
+                            .and_then(|p| p.file_name())
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "skill".to_string());
+                        skills.push(AgentSkillInfo {
+                            name: skill_name,
+                            path: entry.path().to_path_buf(),
+                            tokens: TokenCounter::count_cl100k(&content),
+                        });
+                    }
                 }
             }
         }
 
         // Workspace-level memory, including the .claude/ directory form.
-        for rel in ["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", ".claude/settings.json"] {
+        for rel in [
+            "CLAUDE.md",
+            "CLAUDE.local.md",
+            ".claude/CLAUDE.md",
+            ".claude/settings.json",
+        ] {
             let path = workspace.join(rel);
             if !path.exists() {
                 continue;
@@ -271,12 +330,17 @@ impl AgentPlatformProfiler {
         let total_fixed_instruction_tokens = total_config_tokens;
 
         let context_window = 200_000;
-        let fixed_payload_percentage = (total_fixed_instruction_tokens as f64 / context_window as f64) * 100.0;
-        let est_turn_cost_usd = crate::core::tokens::Pricing::DEFAULT.input_cost(total_fixed_instruction_tokens);
+        let fixed_payload_percentage =
+            (total_fixed_instruction_tokens as f64 / context_window as f64) * 100.0;
+        let est_turn_cost_usd =
+            crate::core::tokens::Pricing::DEFAULT.input_cost(total_fixed_instruction_tokens);
 
         let mut recommendations = Vec::new();
         if cache_history_size > 50_000_000 {
-            recommendations.push(format!("Claude file-history cache is large ({:.1} MB). Run cleanup if IDE feels sluggish.", cache_history_size as f64 / 1_000_000.0));
+            recommendations.push(format!(
+                "Claude file-history cache is large ({:.1} MB). Run cleanup if IDE feels sluggish.",
+                cache_history_size as f64 / 1_000_000.0
+            ));
         }
         if total_skills_count > 10 {
             recommendations.push(format!("{} Claude skills installed ({} total tokens). Ensure on-demand loading is enabled.", total_skills_count, crate::ui::formatters::Formatters::format_tokens(total_skills_tokens)));
@@ -293,7 +357,11 @@ impl AgentPlatformProfiler {
         Ok(AgentPlatformProfile {
             platform: AgentPlatformType::Claude,
             is_installed,
-            global_config_dir: if global_dir.exists() { Some(global_dir) } else { None },
+            global_config_dir: if global_dir.exists() {
+                Some(global_dir)
+            } else {
+                None
+            },
             config_files,
             skills,
             total_skills_count,
@@ -312,7 +380,10 @@ impl AgentPlatformProfiler {
     pub fn profile_grok(workspace: &Path) -> Result<AgentPlatformProfile> {
         let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
         let global_dir = home.join(".grok");
-        let is_installed = global_dir.exists() || which::which("grok").is_ok() || workspace.join("GROK.md").exists() || workspace.join(".grokrules").exists();
+        let is_installed = global_dir.exists()
+            || which::which("grok").is_ok()
+            || workspace.join("GROK.md").exists()
+            || workspace.join(".grokrules").exists();
 
         let mut config_files = Vec::new();
         let skills = Vec::new();
@@ -324,59 +395,67 @@ impl AgentPlatformProfiler {
             for f in files {
                 let p = global_dir.join(f);
                 if p.exists()
-                    && let Ok(c) = fs::read_to_string(&p) {
-                        config_files.push(AgentConfigFile {
-                            name: f.to_string(),
-                            path: p.clone(),
-                            relative_path: format!("~/.grok/{}", f),
-                            lines: c.lines().count(),
-                            tokens: TokenCounter::count_cl100k(&c),
-                            bytes: c.len(),
-                            is_global: true,
-                        });
-                    }
+                    && let Ok(c) = fs::read_to_string(&p)
+                {
+                    config_files.push(AgentConfigFile {
+                        name: f.to_string(),
+                        path: p.clone(),
+                        relative_path: format!("~/.grok/{}", f),
+                        lines: c.lines().count(),
+                        tokens: TokenCounter::count_cl100k(&c),
+                        bytes: c.len(),
+                        is_global: true,
+                    });
+                }
             }
         }
 
         // Workspace files
         let ws_grok = workspace.join("GROK.md");
         if ws_grok.exists()
-            && let Ok(c) = fs::read_to_string(&ws_grok) {
-                config_files.push(AgentConfigFile {
-                    name: "GROK.md (workspace)".to_string(),
-                    path: ws_grok.clone(),
-                    relative_path: "GROK.md".to_string(),
-                    lines: c.lines().count(),
-                    tokens: TokenCounter::count_cl100k(&c),
-                    bytes: c.len(),
-                    is_global: false,
-                });
-            }
+            && let Ok(c) = fs::read_to_string(&ws_grok)
+        {
+            config_files.push(AgentConfigFile {
+                name: "GROK.md (workspace)".to_string(),
+                path: ws_grok.clone(),
+                relative_path: "GROK.md".to_string(),
+                lines: c.lines().count(),
+                tokens: TokenCounter::count_cl100k(&c),
+                bytes: c.len(),
+                is_global: false,
+            });
+        }
 
         let ws_grokrules = workspace.join(".grokrules");
         if ws_grokrules.exists()
-            && let Ok(c) = fs::read_to_string(&ws_grokrules) {
-                config_files.push(AgentConfigFile {
-                    name: ".grokrules (workspace)".to_string(),
-                    path: ws_grokrules.clone(),
-                    relative_path: ".grokrules".to_string(),
-                    lines: c.lines().count(),
-                    tokens: TokenCounter::count_cl100k(&c),
-                    bytes: c.len(),
-                    is_global: false,
-                });
-            }
+            && let Ok(c) = fs::read_to_string(&ws_grokrules)
+        {
+            config_files.push(AgentConfigFile {
+                name: ".grokrules (workspace)".to_string(),
+                path: ws_grokrules.clone(),
+                relative_path: ".grokrules".to_string(),
+                lines: c.lines().count(),
+                tokens: TokenCounter::count_cl100k(&c),
+                bytes: c.len(),
+                is_global: false,
+            });
+        }
 
         let total_config_tokens: usize = config_files.iter().map(|c| c.tokens).sum();
         let total_fixed_instruction_tokens = total_config_tokens;
 
         let context_window = 128_000;
-        let fixed_payload_percentage = (total_fixed_instruction_tokens as f64 / context_window as f64) * 100.0;
-        let est_turn_cost_usd = crate::core::tokens::Pricing::DEFAULT.input_cost(total_fixed_instruction_tokens);
+        let fixed_payload_percentage =
+            (total_fixed_instruction_tokens as f64 / context_window as f64) * 100.0;
+        let est_turn_cost_usd =
+            crate::core::tokens::Pricing::DEFAULT.input_cost(total_fixed_instruction_tokens);
 
         let mut recommendations = Vec::new();
         if !is_installed && config_files.is_empty() {
-            recommendations.push("Grok rules not configured for this workspace. Add GROK.md if using Grok agent.".to_string());
+            recommendations.push(
+                "Grok rules not configured for this workspace. Add GROK.md if using Grok agent."
+                    .to_string(),
+            );
         }
 
         let health_rating = if fixed_payload_percentage < 3.0 {
@@ -388,7 +467,11 @@ impl AgentPlatformProfiler {
         Ok(AgentPlatformProfile {
             platform: AgentPlatformType::Grok,
             is_installed,
-            global_config_dir: if global_dir.exists() { Some(global_dir) } else { None },
+            global_config_dir: if global_dir.exists() {
+                Some(global_dir)
+            } else {
+                None
+            },
             config_files,
             skills,
             total_skills_count: 0,
