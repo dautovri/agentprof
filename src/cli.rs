@@ -8,8 +8,8 @@ use std::path::PathBuf;
 #[command(
     name = "agentprof",
     version,
-    about = "AI Agent Workspace Optimizer & Shell Latency Profiler",
-    long_about = "Full-suite optimizer for AI coding agents (Claude, OpenCode, Cursor, Grok): profiles Oh My Zsh plugins, subshell latency, MCP schemas, skills collisions, and rule bloat."
+    about = "Measure and fix what slows AI coding agents down",
+    long_about = "Measures what AI coding agents (Claude Code, Cursor, Codex, OpenCode, Gemini CLI, Copilot) load and run in your workspace — instruction files, MCP tool definitions, skills, secrets they can read, and per-command shell overhead — and fixes what it can. Run without a subcommand for a full scan."
 )]
 pub struct Cli {
     #[command(subcommand)]

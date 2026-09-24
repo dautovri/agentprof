@@ -1,53 +1,131 @@
-name: Release & Homebrew Distribution
+name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and (re)publish, e.g. v0.3.0
+        required: true
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
-  build-and-release:
-    name: Build Multi-Arch Binaries (${{ matrix.target }})
+  build:
+    name: Build ${{ matrix.asset }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # Both macOS binaries build on Apple silicon; the retired macos-13
+          # image left the Intel build queued until the run was cancelled.
           - os: macos-14
             target: aarch64-apple-darwin
-            artifact_name: agentprof-darwin-arm64
-          - os: macos-13
+            asset: agentprof-darwin-arm64
+          - os: macos-14
             target: x86_64-apple-darwin
-            artifact_name: agentprof-darwin-x86_64
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: agentprof-linux-x86_64
+            asset: agentprof-darwin-x86_64
+          # Static musl binaries run on any Linux distribution.
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            asset: agentprof-linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            asset: agentprof-linux-arm64
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Check the tag matches Cargo.toml
+        shell: bash
+        run: |
+          manifest="v$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          if [ "$manifest" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match Cargo.toml version $manifest"
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build Release Binary
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Package Binary
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Smoke test
+        # The Intel macOS binary is cross-compiled and cannot run natively here.
+        if: matrix.target != 'x86_64-apple-darwin'
+        run: ./target/${{ matrix.target }}/release/agentprof --version
+
+      - name: Package
+        shell: bash
         run: |
           mkdir -p dist
-          tar -czf "dist/${{ matrix.artifact_name }}.tar.gz" -C "target/${{ matrix.target }}/release" agentprof
+          tar -czf "dist/${{ matrix.asset }}.tar.gz" -C "target/${{ matrix.target }}/release" agentprof
           cd dist
-          shasum -a 256 "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
+          shasum -a 256 "${{ matrix.asset }}.tar.gz" > "${{ matrix.asset }}.tar.gz.sha256"
 
-      - name: Upload Artifacts to Release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          files: |
-            dist/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ matrix.asset }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Release notes and Homebrew formula
+        run: |
+          scripts/changelog-section.sh "$TAG" > release-notes.md
+          scripts/homebrew-formula.sh "$TAG" dist > dist/agentprof.rb
+          (cd dist && sha256sum agentprof-*.tar.gz > SHA256SUMS)
+          ls -l dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          body_path: release-notes.md
+          files: dist/*
+
+      # Optional: set a HOMEBREW_TAP_TOKEN secret (a token with write access to
+      # dautovri/homebrew-tap) to publish the formula automatically.
+      - name: Update the Homebrew tap
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        run: |
+          git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/dautovri/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp dist/agentprof.rb tap/Formula/agentprof.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/agentprof.rb
+          git commit -m "agentprof ${TAG}" || { echo "Formula unchanged"; exit 0; }
+          git push

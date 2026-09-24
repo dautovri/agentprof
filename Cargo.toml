@@ -1,10 +1,15 @@
 [package]
 name = "agentprof"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Ruslan Dautov <dautovri@gmail.com>"]
-description = "AI Agent Workspace Optimizer & Shell Startup Profiler"
+description = "Measures and fixes what slows AI coding agents down: instruction bloat, MCP tool load, secrets agents can read, and shell overhead"
+homepage = "https://dautovri.github.io/agentprof/"
+documentation = "https://github.com/dautovri/agentprof#readme"
+keywords = ["ai-agents", "claude-code", "mcp", "cli", "developer-tools"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".github/", "docs/", "action.yml", "install.sh", "scripts/"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/dautovri/agentprof"
@@ -21,7 +26,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 anyhow = "1.0"
 walkdir = "2.5"
-indicatif = "0.17"
 which = "7.0"
 ratatui = "0.29"
 crossterm = "0.28"
@@ -30,3 +34,7 @@ toml = { version = "1", default-features = false, features = ["parse", "serde", 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

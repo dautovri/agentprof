@@ -51,17 +51,6 @@ pub enum HealthStatus {
     Bloated,
 }
 
-impl HealthStatus {
-    #[allow(dead_code)]
-    pub fn badge(&self) -> &'static str {
-        match self {
-            HealthStatus::Optimal => "✅ Optimal",
-            HealthStatus::Warning => "⚠️ Warning",
-            HealthStatus::Bloated => "🚨 Bloated",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstructionFileReport {
     pub path: PathBuf,
