@@ -602,16 +602,13 @@ impl TableRenderer {
     }
 
     pub fn render_shell_benchmark(bench: &ShellBenchmarkResult) {
-        println!(
-            "{}",
-            "\n⚡ Subshell Spawn & Tool Execution Latency".bold().cyan()
-        );
+        println!("{}", "\n🐚 Agent Shell Overhead".bold().cyan());
         println!("{}", "═".repeat(78).dimmed());
 
-        println!(
-            "  • Shell:                             {}",
-            bench.shell_name.bold()
-        );
+        // Labels vary in length with the shell name, so pad them explicitly
+        // to keep the values in one column.
+        let row = |label: String, value: String| println!("  • {:<34} {}", label, value);
+        row("Shell:".to_string(), bench.shell_name.bold().to_string());
 
         if let Some(err) = &bench.error {
             println!("  {}", format!("⚠️  {}", err).yellow());
@@ -622,59 +619,62 @@ impl TableRenderer {
             v.map(Formatters::format_ms)
                 .unwrap_or_else(|| "—".to_string())
         };
-        println!(
-            "  • Bare spawn (`{} -c`):              {}",
-            bench.shell_name,
-            fmt(bench.non_interactive_ms).bold().green()
+        let shell = &bench.shell_name;
+        row(
+            format!("Bare spawn (`{} -c`):", shell),
+            fmt(bench.non_interactive_ms).bold().green().to_string(),
         );
-        println!(
-            "  • Login shell (`{} -lc`):            {}",
-            bench.shell_name,
-            fmt(bench.login_ms).bold()
+        row(
+            format!("Login shell (`{} -lc`):", shell),
+            fmt(bench.login_ms).bold().to_string(),
         );
-        println!(
-            "  • Interactive login (`{} -lic`):     {}",
-            bench.shell_name,
-            fmt(bench.interactive_login_ms).bold().yellow()
+        row(
+            format!("Interactive login (`{} -lic`):", shell),
+            fmt(bench.interactive_login_ms).bold().yellow().to_string(),
         );
-        match &bench.claude_snapshot {
-            Some(snapshot) => println!(
-                "  • Claude Code snapshot replay:       {} ({} KB snapshot)",
-                Formatters::format_ms(snapshot.replay_ms).bold().yellow(),
-                snapshot.size_bytes / 1024
-            ),
-            None => println!(
-                "  • Claude Code snapshot replay:       {}",
-                "— (no snapshot in ~/.claude/shell-snapshots)".dimmed()
-            ),
-        }
+        row(
+            "Claude Code snapshot replay:".to_string(),
+            match &bench.claude_snapshot {
+                Some(snapshot) => format!(
+                    "{} ({} KB snapshot)",
+                    Formatters::format_ms(snapshot.replay_ms).bold().yellow(),
+                    snapshot.size_bytes / 1024
+                ),
+                None => "— (no snapshot in ~/.claude/shell-snapshots)"
+                    .dimmed()
+                    .to_string(),
+            },
+        );
         if let (Some(tax), Some(source)) = (bench.per_command_tax_ms, &bench.per_command_tax_source)
         {
-            println!(
-                "  • Per-command agent overhead:        {} {}",
-                Formatters::format_ms(tax).bold().red(),
-                format!("({})", source).dimmed()
+            row(
+                "Per-command agent overhead:".to_string(),
+                format!(
+                    "{} {}",
+                    Formatters::format_ms(tax).bold().red(),
+                    format!("({})", source).dimmed()
+                ),
             );
         }
         if let Some(fifty) = bench.estimated_50_tool_calls_sec {
-            println!(
-                "  • Overhead across 50 commands:       {}",
-                format!("+{:.1}s", fifty).bold().red()
+            row(
+                "Overhead across 50 commands:".to_string(),
+                format!("+{:.1}s", fifty).bold().red().to_string(),
             );
         }
-        println!(
-            "  • Status Rating:                     {}",
-            bench.rating.map(|r| r.badge()).unwrap_or("—")
+        row(
+            "Rating:".to_string(),
+            bench.rating.map(|r| r.badge()).unwrap_or("—").to_string(),
         );
-        println!(
-            "  • Agent Fast-Path Guard:             {}",
+        row(
+            "Agent fast-path guard:".to_string(),
             if bench.has_agent_fast_path {
                 "✅ Installed".green().to_string()
             } else {
                 "not installed (optional: `agentprof fix --shell`)"
                     .dimmed()
                     .to_string()
-            }
+            },
         );
         println!(
             "  {}",

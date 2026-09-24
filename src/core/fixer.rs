@@ -191,10 +191,7 @@ impl FixerEngine {
             });
         }
         let detail = if added > 0 {
-            format!(
-                "{} Read deny rule(s) for secret files — Claude Code will refuse to read or edit them",
-                added
-            )
+            format!("{} Read deny rule(s) for secret files", added)
         } else {
             "reordered deny rules so user exceptions keep applying".to_string()
         };
@@ -304,16 +301,18 @@ impl FixerEngine {
             .iter()
             .filter(|p| !block_patterns.contains(&p.as_str()))
             .count();
-        let mut detail = format!("{} pattern(s) added", added);
-        if removed > 0 {
-            detail.push_str(&format!(", {} outdated pattern(s) removed", removed));
-        }
+        let removed_note = if removed > 0 {
+            format!(", {} outdated pattern(s) removed", removed)
+        } else {
+            String::new()
+        };
+        let detail = format!("{} pattern(s) added{}", added, removed_note);
 
         if dry_run {
             return Ok(FixAction {
                 target: path.to_path_buf(),
                 outcome: FixOutcome::WouldChange,
-                detail: format!("would change: {}", detail),
+                detail: format!("would add {} pattern(s){}", added, removed_note),
                 backup: None,
             });
         }

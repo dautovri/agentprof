@@ -4,6 +4,7 @@ use anyhow::Result;
 use owo_colors::OwoColorize;
 
 use crate::core::fixer::{FixAction, FixOutcome, FixerEngine};
+use crate::ui::formatters::Formatters;
 
 pub struct FixCommand;
 
@@ -57,6 +58,12 @@ impl FixCommand {
             return Ok(());
         }
 
+        let root = target_path
+            .canonicalize()
+            .unwrap_or_else(|_| target_path.to_path_buf());
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let show = |p: &Path| Formatters::display_path(p, &root, home.as_deref());
+
         for action in &actions {
             let (icon, label) = match action.outcome {
                 FixOutcome::Created => ("✅", "created"),
@@ -68,13 +75,26 @@ impl FixCommand {
             println!(
                 "  {} {} [{}] — {}",
                 icon,
-                action.target.display().green(),
+                show(&action.target).green(),
                 label,
                 action.detail.dimmed()
             );
             if let Some(backup) = &action.backup {
-                println!("       backup: {}", backup.display().to_string().dimmed());
+                println!("       backup: {}", show(backup).dimmed());
             }
+        }
+
+        let wrote_deny_rules = actions.iter().any(|a| {
+            a.target.ends_with(".claude/settings.json")
+                && matches!(a.outcome, FixOutcome::Created | FixOutcome::Updated)
+        });
+        if wrote_deny_rules {
+            println!(
+                "\n{}",
+                "Claude Code now refuses to read or edit files matching these deny rules. \
+                 Commit .claude/settings.json so the whole team gets them."
+                    .dimmed()
+            );
         }
 
         if run_shell && !dry_run && actions.iter().any(|a| a.outcome == FixOutcome::Created) {

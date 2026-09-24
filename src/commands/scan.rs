@@ -4,6 +4,8 @@ use std::path::Path;
 
 use crate::core::mcp_profiler::McpProfiler;
 use crate::core::omz_profiler::OmzProfiler;
+use crate::core::report_generator::ReportGenerator;
+use crate::core::rule_linter::RuleLinter;
 use crate::core::scanner::InstructionScanner;
 use crate::core::shell_bench::ShellBenchmarker;
 use crate::core::skills_auditor::SkillsAuditor;
@@ -27,15 +29,24 @@ impl ScanCommand {
         let workspace_audit = WorkspaceGuard::audit(target_path)?;
         let mcp_report = McpProfiler::profile(target_path)?;
         let skills_report = SkillsAuditor::audit(target_path)?;
+        let lint_report = RuleLinter::lint_workspace(target_path)?;
+        let health = ReportGenerator::score_parts(
+            &context_summary,
+            &bench_result,
+            &workspace_audit,
+            &mcp_report,
+        );
 
         if json {
             let output = serde_json::json!({
+                "health": health,
                 "context": context_summary,
                 "subshell": bench_result,
                 "omz": omz_report,
                 "workspace": workspace_audit,
                 "mcp": mcp_report,
                 "skills": skills_report,
+                "lint": lint_report,
             });
             println!("{}", serde_json::to_string_pretty(&output)?);
             return Ok(());
@@ -47,6 +58,22 @@ impl ScanCommand {
         TableRenderer::render_mcp_report(&mcp_report);
         TableRenderer::render_skills_report(&skills_report);
         TableRenderer::render_workspace_audit(&workspace_audit);
+
+        println!("\n{}", "🔍 Instruction Conflicts".bold().cyan());
+        println!("{}", "═".repeat(78).dimmed());
+        if lint_report.contradictions_found == 0 {
+            println!(
+                "  {}",
+                "✅ No contradictions between instruction files".green()
+            );
+        }
+        for issue in lint_report
+            .issues
+            .iter()
+            .filter(|i| i.code == "CROSS_FILE_CONFLICT")
+        {
+            println!("  🚨 {}", issue.message);
+        }
 
         println!("\n{}", "💡 Actionable Recommendations:".bold().cyan());
         println!("{}", "═".repeat(78).dimmed());
@@ -102,6 +129,13 @@ impl ScanCommand {
                 rec_count
             );
         }
+        if lint_report.contradictions_found > 0 {
+            rec_count += 1;
+            println!(
+                "  [{}] Resolve {} contradiction(s) between instruction files: `agentprof lint`",
+                rec_count, lint_report.contradictions_found
+            );
+        }
 
         if rec_count == 0 {
             println!(
@@ -110,6 +144,13 @@ impl ScanCommand {
             );
         }
 
+        println!(
+            "\n{} {}/100 — {} {}",
+            "🤖 Workspace health:".bold(),
+            health.score.bold(),
+            health.grade,
+            "(details: `agentprof report`)".dimmed()
+        );
         println!();
         Ok(())
     }

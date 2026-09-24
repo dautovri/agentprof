@@ -12,8 +12,8 @@ impl BenchCommand {
             println!(
                 "{}",
                 format!(
-                    "⚡ Benchmarking subshell spawn times ({} iterations)...",
-                    iterations
+                    "⚡ Timing shell startup the way agents use it ({} runs each)...",
+                    iterations.max(3)
                 )
                 .bold()
             );

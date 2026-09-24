@@ -40,6 +40,8 @@ impl LintReport {
 
 /// A convention that can be prescribed by an instruction file.
 struct Term {
+    /// How the convention is named in messages.
+    label: &'static str,
     /// Lowercase spellings that name it.
     spellings: &'static [&'static str],
     /// Text that, directly after a spelling, means something else
@@ -47,8 +49,9 @@ struct Term {
     not_followed_by: &'static [&'static str],
 }
 
-const fn term(spellings: &'static [&'static str]) -> Term {
+const fn term(label: &'static str, spellings: &'static [&'static str]) -> Term {
     Term {
+        label,
         spellings,
         not_followed_by: &[],
     }
@@ -58,56 +61,57 @@ const fn term(spellings: &'static [&'static str]) -> Term {
 /// different instruction files at once.
 const CONTRADICTION_PAIRS: &[(Term, Term, &str)] = &[
     (
-        term(&["observableobject"]),
-        term(&["@observable"]),
+        term("ObservableObject", &["observableobject"]),
+        term("@Observable", &["@observable"]),
         "SwiftUI observation conflict",
     ),
     (
-        term(&["swiftdata"]),
-        term(&["core data", "coredata"]),
+        term("SwiftData", &["swiftdata"]),
+        term("Core Data", &["core data", "coredata"]),
         "Persistence framework conflict",
     ),
     (
-        term(&["navigationview"]),
-        term(&["navigationstack"]),
+        term("NavigationView", &["navigationview"]),
+        term("NavigationStack", &["navigationstack"]),
         "SwiftUI navigation API conflict",
     ),
     (
-        term(&["npm install", "npm i", "npm ci"]),
-        term(&["pnpm install", "pnpm add", "pnpm i"]),
+        term("npm", &["npm install", "npm i", "npm ci"]),
+        term("pnpm", &["pnpm install", "pnpm add", "pnpm i"]),
         "Package manager conflict",
     ),
     (
-        term(&["npm install", "npm i", "npm ci"]),
-        term(&["yarn add", "yarn install"]),
+        term("npm", &["npm install", "npm i", "npm ci"]),
+        term("yarn", &["yarn add", "yarn install"]),
         "Package manager conflict",
     ),
     (
-        term(&["pnpm install", "pnpm add", "pnpm i"]),
-        term(&["yarn add", "yarn install"]),
+        term("pnpm", &["pnpm install", "pnpm add", "pnpm i"]),
+        term("yarn", &["yarn add", "yarn install"]),
         "Package manager conflict",
     ),
     (
-        term(&["styled-components"]),
-        term(&["tailwind", "tailwindcss"]),
+        term("styled-components", &["styled-components"]),
+        term("Tailwind", &["tailwind", "tailwindcss"]),
         "Styling approach conflict",
     ),
     (
-        term(&["redux", "redux toolkit"]),
-        term(&["zustand"]),
+        term("Redux", &["redux", "redux toolkit"]),
+        term("Zustand", &["zustand"]),
         "State library conflict",
     ),
     (
         Term {
+            label: "unittest",
             spellings: &["unittest"],
             not_followed_by: &[".mock"],
         },
-        term(&["pytest"]),
+        term("pytest", &["pytest"]),
         "Python test framework conflict",
     ),
     (
-        term(&["tabs for indentation"]),
-        term(&["spaces for indentation"]),
+        term("tabs for indentation", &["tabs for indentation"]),
+        term("spaces for indentation", &["spaces for indentation"]),
         "Indentation conflict",
     ),
 ];
@@ -431,7 +435,7 @@ impl RuleLinter {
                         code: "CROSS_FILE_CONFLICT".to_string(),
                         message: format!(
                             "{}: {}:{} prescribes '{}' while {}:{} prescribes '{}'.",
-                            desc, f1, l1, t1.spellings[0], f2, l2, t2.spellings[0]
+                            desc, f1, l1, t1.label, f2, l2, t2.label
                         ),
                         suggested_fix:
                             "Align instructions to use a single unified standard across all agent files."
@@ -560,7 +564,7 @@ mod tests {
         let issues = conflicts("Migrate from Redux to Zustand", "Use Redux Toolkit");
         assert_eq!(issues.len(), 1, "{:?}", issues);
         assert!(
-            issues[0].message.contains("'zustand'"),
+            issues[0].message.contains("'Zustand'"),
             "{}",
             issues[0].message
         );
