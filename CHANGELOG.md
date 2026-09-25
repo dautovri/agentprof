@@ -7,7 +7,7 @@ is 0.x, minor releases may change command output and JSON fields.
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-09-24
+## [0.3.0] - 2026-09-25
 
 The first release since v0.2.0. Every release asset and the Homebrew formula
 of v0.2.0 were built from the initial commit, so they include the
@@ -39,8 +39,10 @@ destructive `.claudeignore` overwrite and invented numbers fixed in
 - MCP: Codex `config.toml`, VS Code `servers`, OpenCode argv arrays, global
   Cursor, Gemini CLI, Windsurf and Linux Claude Desktop configs; per-agent
   loads; Claude Code tool-search deferral; tools/list pagination.
-- Shell benchmark measures login shells and Claude Code's per-command
-  snapshot replay.
+- Shell benchmark measures login shells and the shell-snapshot replay that
+  Claude Code and Codex run before every command. The per-command figure is
+  the slowest snapshot replay; a login shell counts only when neither agent
+  has a snapshot.
 - Linux arm64 and static (musl) Linux release binaries, SHA256SUMS, and a
   generated Homebrew formula for the prebuilt binaries.
 - CI on every push and pull request (fmt, clippy, tests on Linux and macOS,
@@ -71,6 +73,8 @@ destructive `.claudeignore` overwrite and invented numbers fixed in
 - JSON: `WorkspaceAuditReport` replaces `is_ignored_by_claude` with
   `blocked_for_claude` (secrets) and `is_ignored_by_git` (directories);
   scores gain `points`, `max_points`, `scope` and per-category `measured`.
+- JSON: `ShellBenchmarkResult` gains `login_ms`, `claude_snapshot`,
+  `codex_snapshot`, `per_command_tax_ms` and `per_command_tax_source`.
 
 ## [0.2.0] - 2026-08-16
 

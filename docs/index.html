@@ -918,7 +918,7 @@ Always-Loaded Overhead: ≈<span class="t-yellow"></span><span class="t-yellow">
 <span class="t-cyan"></span><span class="t-cyan">🐚 Agent Shell Overhead</span><br>
   • Login shell (\`bash -lc\`):          <span class="t-bold">118.2ms</span><br>
   • Claude Code snapshot replay:       <span class="t-dim">— (no snapshot in ~/.claude/shell-snapshots)</span><br>
-  • Per-command agent overhead:        <span class="t-red"></span><span class="t-red">116.4ms</span> <span class="t-dim">(login shell (\`bash -lc\`))</span><br>
+  • Per-command agent overhead:        <span class="t-red"></span><span class="t-red">116.4ms</span> <span class="t-dim">(login shell (\`bash -lc\`), no agent snapshot)</span><br>
 <br>
 <span class="t-cyan"></span><span class="t-cyan">🔌 Model Context Protocol (MCP) Tool Schema Profiler</span><br>
   <span class="t-bold">Claude Code     </span> <span class="t-yellow"></span><span class="t-yellow">9</span> tokens per turn <span class="t-dim">(deferred (tool search): only tool names load up front; 1 of 1 server(s) measured)</span><br>
@@ -945,7 +945,7 @@ Oversized (&gt;500 lines):  <span class="t-red">🚨 1 skills</span><br>
   🚨 SwiftUI observation conflict: AGENTS.md:3 prescribes &#x27;ObservableObject&#x27; while CLAUDE.md:9 prescribes &#x27;@Observable&#x27;.<br>
 <br>
 <span class="t-cyan"></span><span class="t-cyan">💡 Actionable Recommendations:</span><br>
-  [1] Agents pay 116ms of shell setup per command (login shell (\`bash -lc\`)). Trim your rc/profile, or try the opt-in guard: \`agentprof fix --shell\`<br>
+  [1] Agents pay 116ms of shell setup per command (login shell (\`bash -lc\`), no agent snapshot). Trim your rc/profile, or try the opt-in guard: \`agentprof fix --shell\`<br>
   [2] Block agent access to 2 secret file(s) with Claude Code deny rules: \`agentprof fix\`<br>
   [3] Audit bloated agent skills: \`agentprof skills\`<br>
   [4] Resolve 1 contradiction(s) between instruction files: \`agentprof lint\`<br>
@@ -997,7 +997,7 @@ Oversized (&gt;500 lines):  <span class="t-red">🚨 1 skills</span><br>
   • Login shell (\`bash -lc\`):          <span class="t-bold">111.1ms</span><br>
   • Interactive login (\`bash -lic\`):   <span class="t-yellow"></span><span class="t-yellow">118.6ms</span><br>
   • Claude Code snapshot replay:       <span class="t-dim">— (no snapshot in ~/.claude/shell-snapshots)</span><br>
-  • Per-command agent overhead:        <span class="t-red"></span><span class="t-red">109.5ms</span> <span class="t-dim">(login shell (\`bash -lc\`))</span><br>
+  • Per-command agent overhead:        <span class="t-red"></span><span class="t-red">109.5ms</span> <span class="t-dim">(login shell (\`bash -lc\`), no agent snapshot)</span><br>
   • Overhead across 50 commands:       <span class="t-red"></span><span class="t-red">+5.5s</span><br>
   • Rating:                            ⚠️ Sluggish (80-250ms tax)<br>
   • Agent fast-path guard:             <span class="t-dim">not installed (optional: \`agentprof fix --shell\`)</span><br>

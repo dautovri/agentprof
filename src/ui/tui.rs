@@ -457,6 +457,12 @@ impl TuiApp {
             "  • Claude Code snapshot replay:  {}",
             fmt(b.claude_snapshot.as_ref().map(|s| s.replay_ms))
         )));
+        if let Some(snapshot) = &b.codex_snapshot {
+            lines.push(Line::from(format!(
+                "  • Codex snapshot replay:        {}",
+                fmt(Some(snapshot.replay_ms))
+            )));
+        }
         lines.push(Line::from(format!(
             "  • Per-command agent overhead:   {} {}",
             fmt(b.per_command_tax_ms),

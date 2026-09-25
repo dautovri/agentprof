@@ -8,7 +8,8 @@ fn bin() -> Command {
     let home = std::env::temp_dir().join(format!("agentprof_it_home_{}", std::process::id()));
     fs::create_dir_all(&home).unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_agentprof"));
-    cmd.env("HOME", &home);
+    // Keep the runner's own agent state (Codex snapshots, config) out of reach.
+    cmd.env("HOME", &home).env_remove("CODEX_HOME");
     cmd
 }
 

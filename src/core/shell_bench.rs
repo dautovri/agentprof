@@ -16,8 +16,8 @@ pub struct ShellBenchmarkResult {
     /// `<shell> -c true`: the unavoidable cost of any spawn. None when the
     /// shell could not be spawned at all.
     pub non_interactive_ms: Option<f64>,
-    /// `<shell> -lc true`: a login shell, as agents that run commands through
-    /// `bash -lc` start (it reads the login profile).
+    /// `<shell> -lc true`: a login shell (it reads the login profile). Codex
+    /// runs commands this way when it has no shell snapshot.
     #[serde(default)]
     pub login_ms: Option<f64>,
     /// `<shell> -lic true`: an interactive login shell (reads the rc file too).
@@ -26,10 +26,14 @@ pub struct ShellBenchmarkResult {
     /// snapshot before every command it runs.
     #[serde(default)]
     pub claude_snapshot: Option<SnapshotReplay>,
+    /// Codex does the same with its own snapshot.
+    #[serde(default)]
+    pub codex_snapshot: Option<SnapshotReplay>,
     /// Interactive-login time minus the baseline.
     pub latency_tax_ms: Option<f64>,
-    /// What an agent pays per command on top of a bare spawn: the larger of
-    /// the Claude Code snapshot replay and the login-shell tax.
+    /// What an agent pays per command on top of a bare spawn: the slowest
+    /// agent snapshot replay, or the login-shell tax when no agent has a
+    /// snapshot (see `per_command_tax`).
     #[serde(default)]
     pub per_command_tax_ms: Option<f64>,
     #[serde(default)]
@@ -113,16 +117,22 @@ impl ShellBenchmarker {
 
     pub fn run_benchmark(iterations: usize) -> Result<ShellBenchmarkResult> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
-        Self::run_benchmark_in(iterations, home.as_deref())
+        // Codex keeps its state in $CODEX_HOME, ~/.codex by default.
+        let codex_home = std::env::var_os("CODEX_HOME")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| home.as_ref().map(|h| h.join(".codex")));
+        Self::run_benchmark_in(iterations, home.as_deref(), codex_home.as_deref())
     }
 
     pub(crate) fn run_benchmark_in(
         iterations: usize,
         home: Option<&Path>,
+        codex_home: Option<&Path>,
     ) -> Result<ShellBenchmarkResult> {
         let iters = iterations.max(3);
         let (shell_name, shell_path) = Self::detect_shell();
-        let has_agent_fast_path = Self::check_for_agent_guard();
+        let has_agent_fast_path = Self::check_for_agent_guard_in(home);
 
         let base = ShellBenchmarkResult {
             shell_name: shell_name.clone(),
@@ -132,6 +142,7 @@ impl ShellBenchmarker {
             login_ms: None,
             interactive_login_ms: None,
             claude_snapshot: None,
+            codex_snapshot: None,
             latency_tax_ms: None,
             per_command_tax_ms: None,
             per_command_tax_source: None,
@@ -178,52 +189,32 @@ impl ShellBenchmarker {
 
         let claude_snapshot = home
             .and_then(|h| Self::find_claude_snapshot(h, &shell_name))
-            .and_then(|snapshot| {
-                let path_arg = snapshot.to_string_lossy().to_string();
-                let replay_ms = Self::measure(
-                    &shell_path,
-                    &[
-                        "-c",
-                        "source \"$1\" >/dev/null 2>&1; true",
-                        "agentprof",
-                        &path_arg,
-                    ],
-                    iters,
-                )
-                .ok()?;
-                Some(SnapshotReplay {
-                    size_bytes: std::fs::metadata(&snapshot).map(|m| m.len()).unwrap_or(0),
-                    path: snapshot,
-                    replay_ms,
-                    tax_ms: (replay_ms - non_interactive_ms).max(0.0),
-                })
-            });
+            .and_then(|s| Self::time_snapshot(&shell_path, s, iters, non_interactive_ms));
+        let codex_snapshot = codex_home
+            .and_then(Self::find_codex_snapshot)
+            .and_then(|s| Self::time_snapshot(&shell_path, s, iters, non_interactive_ms));
 
         let latency_tax_ms = (interactive_login_ms - non_interactive_ms).max(0.0);
 
-        // Score what agents actually pay per command, not a shell mode they
-        // may never use.
-        let mut candidates: Vec<(f64, String)> = Vec::new();
-        if let Some(snapshot) = &claude_snapshot {
-            candidates.push((snapshot.tax_ms, "Claude Code snapshot replay".to_string()));
-        }
-        if let Some(login) = login_ms {
-            candidates.push((
-                (login - non_interactive_ms).max(0.0),
-                format!("login shell (`{} -lc`)", shell_name),
-            ));
-        }
-        let (per_command_tax_ms, per_command_tax_source) = candidates
-            .into_iter()
-            .max_by(|a, b| a.0.total_cmp(&b.0))
-            .map(|(tax, source)| (Some(tax), Some(source)))
-            .unwrap_or((None, None));
+        let login_tax_ms = login_ms.map(|login| (login - non_interactive_ms).max(0.0));
+        let (per_command_tax_ms, per_command_tax_source) = match Self::per_command_tax(
+            &shell_name,
+            login_tax_ms,
+            &[
+                ("Claude Code", claude_snapshot.as_ref()),
+                ("Codex", codex_snapshot.as_ref()),
+            ],
+        ) {
+            Some((tax, source)) => (Some(tax), Some(source)),
+            None => (None, None),
+        };
 
         Ok(ShellBenchmarkResult {
             non_interactive_ms: Some(non_interactive_ms),
             login_ms,
             interactive_login_ms: Some(interactive_login_ms),
             claude_snapshot,
+            codex_snapshot,
             latency_tax_ms: Some(latency_tax_ms),
             per_command_tax_ms,
             per_command_tax_source,
@@ -233,16 +224,95 @@ impl ShellBenchmarker {
         })
     }
 
+    /// What agents pay per command on top of a bare spawn, and where the
+    /// figure comes from.
+    ///
+    /// Claude Code and Codex both capture the user's shell once per session
+    /// and replay that snapshot before every command, so when either has a
+    /// snapshot, the slowest replay is the cost. A login shell counts only
+    /// when neither has one: it is what Codex runs without a snapshot.
+    ///
+    /// - Claude Code: "At session start, Claude Code sources `~/.zshrc`,
+    ///   `~/.bashrc`, or `~/.profile` depending on your shell, captures the
+    ///   resulting aliases, functions, and shell options, and applies them to
+    ///   every Bash command." <https://code.claude.com/docs/en/tools-reference>
+    /// - Codex: commands run as `<shell> -lc` unless `allow_login_shell` is
+    ///   off (`get_command` in `core/src/tools/handlers/unified_exec.rs`), and
+    ///   the default-on `shell_snapshot` feature rewrites that command to
+    ///   source the session snapshot instead (`maybe_wrap_shell_lc_with_snapshot`
+    ///   in `core/src/tools/runtimes/mod.rs`).
+    ///   <https://github.com/openai/codex/tree/d7b07d45517a793acfba4cbf8de697d723cceb46/codex-rs>
+    fn per_command_tax(
+        shell_name: &str,
+        login_tax_ms: Option<f64>,
+        snapshots: &[(&str, Option<&SnapshotReplay>)],
+    ) -> Option<(f64, String)> {
+        let slowest = snapshots
+            .iter()
+            .filter_map(|(agent, snapshot)| snapshot.map(|s| (s.tax_ms, *agent)))
+            .max_by(|a, b| a.0.total_cmp(&b.0));
+        if let Some((tax, agent)) = slowest {
+            return Some((tax, format!("{} snapshot replay", agent)));
+        }
+        login_tax_ms.map(|tax| {
+            (
+                tax,
+                format!("login shell (`{} -lc`), no agent snapshot", shell_name),
+            )
+        })
+    }
+
+    /// Times spawning the shell and sourcing `snapshot`, as an agent does
+    /// before each command.
+    fn time_snapshot(
+        shell_path: &Path,
+        snapshot: PathBuf,
+        iterations: usize,
+        bare_spawn_ms: f64,
+    ) -> Option<SnapshotReplay> {
+        let path_arg = snapshot.to_string_lossy().to_string();
+        let replay_ms = Self::measure(
+            shell_path,
+            &[
+                "-c",
+                "source \"$1\" >/dev/null 2>&1; true",
+                "agentprof",
+                &path_arg,
+            ],
+            iterations,
+        )
+        .ok()?;
+        Some(SnapshotReplay {
+            size_bytes: std::fs::metadata(&snapshot).map(|m| m.len()).unwrap_or(0),
+            path: snapshot,
+            replay_ms,
+            tax_ms: (replay_ms - bare_spawn_ms).max(0.0),
+        })
+    }
+
     /// The newest Claude Code shell snapshot for `shell_name`, if any.
     pub(crate) fn find_claude_snapshot(home: &Path, shell_name: &str) -> Option<PathBuf> {
         let prefix = format!("snapshot-{}-", shell_name);
-        std::fs::read_dir(home.join(".claude/shell-snapshots"))
+        Self::newest_file(&home.join(".claude/shell-snapshots"), |name| {
+            name.starts_with(&prefix) && name.ends_with(".sh")
+        })
+    }
+
+    /// The newest Codex shell snapshot, if any. Codex writes
+    /// `<session>.<nonce>.sh` into `$CODEX_HOME/shell_snapshots`; files still
+    /// being written end in `.tmp-<nonce>`.
+    /// <https://github.com/openai/codex/blob/d7b07d45517a793acfba4cbf8de697d723cceb46/codex-rs/core/src/shell_snapshot.rs>
+    pub(crate) fn find_codex_snapshot(codex_home: &Path) -> Option<PathBuf> {
+        Self::newest_file(&codex_home.join("shell_snapshots"), |name| {
+            name.ends_with(".sh")
+        })
+    }
+
+    fn newest_file(dir: &Path, matches: impl Fn(&str) -> bool) -> Option<PathBuf> {
+        std::fs::read_dir(dir)
             .ok()?
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                let name = e.file_name().to_string_lossy().to_string();
-                name.starts_with(&prefix) && name.ends_with(".sh")
-            })
+            .filter(|e| matches(&e.file_name().to_string_lossy()))
             .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
             .max_by_key(|(modified, _)| *modified)
             .map(|(_, path)| path)
@@ -305,10 +375,14 @@ impl ShellBenchmarker {
     /// `CLAUDE_CODE` reported "guard installed" for any rc file that merely
     /// referenced the variable.
     pub fn check_for_agent_guard() -> bool {
-        let Ok(home) = std::env::var("HOME") else {
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        Self::check_for_agent_guard_in(home.as_deref())
+    }
+
+    fn check_for_agent_guard_in(home: Option<&Path>) -> bool {
+        let Some(home) = home else {
             return false;
         };
-        let home = PathBuf::from(home);
         for rc in [".zshrc", ".bashrc", ".bash_profile", ".profile"] {
             if let Ok(content) = std::fs::read_to_string(home.join(rc))
                 && content.contains(crate::core::fixer::FAST_PATH_SENTINEL)
@@ -415,14 +489,122 @@ mod tests {
         )
         .unwrap();
 
-        let result = ShellBenchmarker::run_benchmark_in(3, Some(&home)).unwrap();
+        let result = ShellBenchmarker::run_benchmark_in(3, Some(&home), None).unwrap();
         if result.error.is_none() {
             let snapshot = result.claude_snapshot.expect("snapshot should be measured");
             assert!(snapshot.replay_ms > 0.0);
-            assert!(result.per_command_tax_ms.is_some());
-            assert!(result.per_command_tax_source.is_some());
+            // With a snapshot present, the login shell no longer sets the figure.
+            assert_eq!(
+                result.per_command_tax_source.as_deref(),
+                Some("Claude Code snapshot replay")
+            );
+            assert_eq!(result.per_command_tax_ms, Some(snapshot.tax_ms));
         }
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn test_codex_snapshot_is_measured() {
+        let codex_home =
+            std::env::temp_dir().join(format!("agentprof_codex_run_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&codex_home);
+        let dir = codex_home.join("shell_snapshots");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("session.1.sh"), "export AGENTPROF_SNAP=1\n").unwrap();
+
+        let result = ShellBenchmarker::run_benchmark_in(3, None, Some(&codex_home)).unwrap();
+        if result.error.is_none() {
+            let snapshot = result
+                .codex_snapshot
+                .expect("Codex snapshot should be measured");
+            assert!(snapshot.replay_ms > 0.0);
+            assert_eq!(
+                result.per_command_tax_source.as_deref(),
+                Some("Codex snapshot replay")
+            );
+        }
+        let _ = std::fs::remove_dir_all(&codex_home);
+    }
+
+    #[test]
+    fn test_finds_the_newest_codex_snapshot() {
+        let codex_home =
+            std::env::temp_dir().join(format!("agentprof_codex_snap_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&codex_home);
+        assert!(ShellBenchmarker::find_codex_snapshot(&codex_home).is_none());
+
+        let dir = codex_home.join("shell_snapshots");
+        std::fs::create_dir_all(&dir).unwrap();
+        let write_at = |name: &str, secs: u64| {
+            let path = dir.join(name);
+            std::fs::write(&path, "true").unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(secs))
+                .unwrap();
+        };
+        write_at("old-session.1.sh", 1_000);
+        write_at("new-session.2.sh", 2_000);
+        // Still being written: never replayed, even though it is the newest.
+        write_at("newer-session.tmp-3", 3_000);
+
+        let found = ShellBenchmarker::find_codex_snapshot(&codex_home).unwrap();
+        assert!(found.ends_with("new-session.2.sh"), "{}", found.display());
+        let _ = std::fs::remove_dir_all(&codex_home);
+    }
+
+    fn replay(tax_ms: f64) -> SnapshotReplay {
+        SnapshotReplay {
+            path: PathBuf::from("snapshot.sh"),
+            size_bytes: 0,
+            replay_ms: tax_ms + 2.0,
+            tax_ms,
+        }
+    }
+
+    #[test]
+    fn test_snapshot_replay_sets_the_figure_not_the_login_shell() {
+        // Regression: a 16ms Claude Code snapshot next to a 120ms login shell
+        // was reported as 120ms per command, a path Claude Code never takes.
+        let claude = replay(16.0);
+        let (tax, source) = ShellBenchmarker::per_command_tax(
+            "bash",
+            Some(120.0),
+            &[("Claude Code", Some(&claude)), ("Codex", None)],
+        )
+        .unwrap();
+        assert_eq!(tax, 16.0);
+        assert_eq!(source, "Claude Code snapshot replay");
+    }
+
+    #[test]
+    fn test_slowest_agent_snapshot_is_reported() {
+        let (claude, codex) = (replay(16.0), replay(40.0));
+        let (tax, source) = ShellBenchmarker::per_command_tax(
+            "zsh",
+            Some(120.0),
+            &[("Claude Code", Some(&claude)), ("Codex", Some(&codex))],
+        )
+        .unwrap();
+        assert_eq!(tax, 40.0);
+        assert_eq!(source, "Codex snapshot replay");
+    }
+
+    #[test]
+    fn test_login_shell_counts_only_without_agent_snapshots() {
+        let (tax, source) = ShellBenchmarker::per_command_tax(
+            "bash",
+            Some(120.0),
+            &[("Claude Code", None), ("Codex", None)],
+        )
+        .unwrap();
+        assert_eq!(tax, 120.0);
+        assert_eq!(source, "login shell (`bash -lc`), no agent snapshot");
+        assert!(
+            ShellBenchmarker::per_command_tax("bash", None, &[("Claude Code", None)]).is_none()
+        );
     }
 
     #[test]

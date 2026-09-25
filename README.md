@@ -22,8 +22,8 @@ and execute in your workspace:
 - 🎯 **Skills.** Name and description tokens every session pays for,
   oversized `SKILL.md` files, and skills competing for the same intent.
 - ⚔️ **Conflicting instructions** across agent files, with file and line.
-- 🐚 **Per-command shell overhead.** Claude Code's shell-snapshot replay and
-  login shells, timed on your machine.
+- 🐚 **Per-command shell overhead.** The shell snapshot Claude Code and Codex
+  replay before every command, timed on your machine.
 - 🧾 **Session cost.** Claude Code transcripts, de-duplicated and priced per
   model.
 
@@ -116,7 +116,7 @@ comment; needs `pull-requests: write`) and `version`. Output: `score`.
 | `mcp` | Configured MCP servers per agent. `--probe` measures real tool schemas; `--trust-workspace` also starts servers defined inside the repository. |
 | `skills` | Installed skills: always-loaded metadata, on-invocation size, oversized files, trigger collisions. |
 | `history` | Claude Code token usage and API-equivalent cost from transcripts. `--sessions N` to widen. |
-| `bench` | Shell startup: bare spawn, login shell, interactive login, and Claude Code snapshot replay. |
+| `bench` | Shell startup: bare spawn, login shell, interactive login, and the Claude Code and Codex snapshot replays. |
 | `omz` | Oh My Zsh startup and per-plugin cost. |
 | `agent` | Per-agent summary for Claude Code, OpenCode and Grok. |
 | `tui` | Full-screen dashboard of all of the above. |
@@ -153,7 +153,7 @@ Session history is read from Claude Code transcripts only.
 | MCP schema tokens | A live `initialize` → `tools/list` handshake with each server (`--probe`), cached per command for 7 days. Unmeasured servers show `—`. |
 | MCP load per agent | Full definitions for agents that load them up front; tool names only for Claude Code, which defers definitions (tool search) unless `ENABLE_TOOL_SEARCH` says otherwise. |
 | Secret exposure | File-name patterns for credentials, checked against the `Read(...)` deny rules of every Claude Code settings file in play (managed, user, project, local). |
-| Shell overhead | Median of real spawns after warm-up runs: `-c`, `-lc`, `-lic`, and sourcing the newest Claude Code shell snapshot. |
+| Shell overhead | Median of real spawns after warm-up runs: `-c`, `-lc`, `-lic`, and sourcing the newest Claude Code and Codex shell snapshots. Both agents replay their snapshot before every command, so the per-command figure is the slowest replay; the login shell (what Codex runs without a snapshot) counts only when neither agent has one. |
 | Session cost | Transcript `usage` blocks, de-duplicated by message and request id, priced per model at Anthropic list prices (5-minute and 1-hour cache writes, model-specific cache reads). It is an API-equivalent figure; subscription plans bill differently. |
 | Health score | Five categories of 20 points. Categories that were not measured are left out and the score is normalised, so nothing earns points by default. |
 
@@ -174,8 +174,8 @@ Session history is read from Claude Code transcripts only.
 `~/.bashrc` (backup kept). It does nothing unless `AGENTPROF_FAST_PATH=1` is
 set, which `agentprof wrap <agent>` does. Shells started that way skip the
 rest of the rc file and restore only your `PATH` from a snapshot, so the
-agent gets a lean shell — and Claude Code a smaller snapshot to replay on
-every command — at the cost of your aliases, functions and other exports.
+agent gets a lean shell — and Claude Code or Codex a smaller snapshot to
+replay on every command — at the cost of your aliases, functions and other exports.
 Run `agentprof bench` before and after to see whether it pays off for you,
 and re-run `fix --shell` to refresh the PATH snapshot.
 

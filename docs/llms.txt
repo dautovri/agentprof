@@ -55,7 +55,9 @@ out of the score instead of earning points.
 - `agentprof history [--sessions N]`: Claude Code transcript usage, de-duplicated
   by message and request id, priced per model (API-equivalent cost).
 - `agentprof bench [--iterations N]`: Median spawn time for bare, login and
-  interactive shells, plus Claude Code's shell-snapshot replay.
+  interactive shells, plus the shell-snapshot replay Claude Code and Codex run
+  before every command. The per-command figure is the slowest replay; the
+  login shell counts only when neither agent has a snapshot.
 - `agentprof omz`: Oh My Zsh startup and per-plugin cost.
 - `agentprof agent`: Per-agent summary for Claude Code, OpenCode and Grok.
 - `agentprof tui`: Interactive dashboard. Requires a real terminal.

@@ -638,6 +638,16 @@ impl TableRenderer {
                     .to_string(),
             },
         );
+        if let Some(snapshot) = &bench.codex_snapshot {
+            row(
+                "Codex snapshot replay:".to_string(),
+                format!(
+                    "{} ({} KB snapshot)",
+                    Formatters::format_ms(snapshot.replay_ms).bold().yellow(),
+                    snapshot.size_bytes / 1024
+                ),
+            );
+        }
         if let (Some(tax), Some(source)) = (bench.per_command_tax_ms, &bench.per_command_tax_source)
         {
             row(
