@@ -1,4 +1,3 @@
-use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, Color, ContentArrangement, Table};
 use owo_colors::OwoColorize;
@@ -36,8 +35,7 @@ impl TableRenderer {
 
         let mut table = Table::new();
         table
-            .load_preset(UTF8_FULL)
-            .apply_modifier(UTF8_ROUND_CORNERS)
+            .load_style(UTF8_FULL.with_rounded_corners())
             .set_content_arrangement(ContentArrangement::Dynamic)
             .set_header(vec![
                 Cell::new("Category").fg(Color::Cyan),
@@ -97,8 +95,7 @@ impl TableRenderer {
 
         let mut table = Table::new();
         table
-            .load_preset(UTF8_FULL)
-            .apply_modifier(UTF8_ROUND_CORNERS)
+            .load_style(UTF8_FULL.with_rounded_corners())
             .set_content_arrangement(ContentArrangement::Dynamic)
             .set_header(vec![
                 Cell::new("MCP Server").fg(Color::Cyan),
@@ -242,8 +239,7 @@ impl TableRenderer {
             );
             let mut table = Table::new();
             table
-                .load_preset(UTF8_FULL)
-                .apply_modifier(UTF8_ROUND_CORNERS)
+                .load_style(UTF8_FULL.with_rounded_corners())
                 .set_header(vec![
                     Cell::new("Trigger Keyword").fg(Color::Cyan),
                     Cell::new("Compromised Skills").fg(Color::Cyan),
@@ -412,8 +408,7 @@ impl TableRenderer {
             println!("\n{}", "Recent Sessions:".bold());
             let mut table = Table::new();
             table
-                .load_preset(UTF8_FULL)
-                .apply_modifier(UTF8_ROUND_CORNERS)
+                .load_style(UTF8_FULL.with_rounded_corners())
                 .set_content_arrangement(ContentArrangement::Dynamic)
                 .set_header(vec![
                     Cell::new("Project").fg(Color::Cyan),
@@ -452,8 +447,7 @@ impl TableRenderer {
 
         let mut table = Table::new();
         table
-            .load_preset(UTF8_FULL)
-            .apply_modifier(UTF8_ROUND_CORNERS)
+            .load_style(UTF8_FULL.with_rounded_corners())
             .set_header(vec![
                 Cell::new("Agent Platform").fg(Color::Cyan),
                 Cell::new("Installed").fg(Color::Cyan),
@@ -546,8 +540,7 @@ impl TableRenderer {
 
         let mut table = Table::new();
         table
-            .load_preset(UTF8_FULL)
-            .apply_modifier(UTF8_ROUND_CORNERS)
+            .load_style(UTF8_FULL.with_rounded_corners())
             .set_content_arrangement(ContentArrangement::Dynamic)
             .set_header(vec![
                 Cell::new("File").fg(Color::Cyan),
@@ -714,8 +707,7 @@ impl TableRenderer {
             println!("\n{}", "Plugin Startup Breakdown:".bold());
             let mut table = Table::new();
             table
-                .load_preset(UTF8_FULL)
-                .apply_modifier(UTF8_ROUND_CORNERS)
+                .load_style(UTF8_FULL.with_rounded_corners())
                 .set_header(vec![
                     Cell::new("Plugin").fg(Color::Cyan),
                     Cell::new("Time").fg(Color::Cyan),

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, Color, ContentArrangement, Table};
 use owo_colors::OwoColorize;
@@ -47,8 +46,7 @@ impl LintCommand {
 
         let mut table = Table::new();
         table
-            .load_preset(UTF8_FULL)
-            .apply_modifier(UTF8_ROUND_CORNERS)
+            .load_style(UTF8_FULL.with_rounded_corners())
             .set_content_arrangement(ContentArrangement::Dynamic)
             .set_header(vec![
                 Cell::new("File").fg(Color::Cyan),

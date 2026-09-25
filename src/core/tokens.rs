@@ -21,12 +21,12 @@ pub struct TokenCounter;
 impl TokenCounter {
     /// Counts tokens using cl100k_base.
     pub fn count_cl100k(text: &str) -> usize {
-        cl100k_base_singleton().lock().encode_ordinary(text).len()
+        cl100k_base_singleton().encode_ordinary(text).len()
     }
 
     /// Counts tokens using o200k_base (GPT-4o and later OpenAI models).
     pub fn count_o200k(text: &str) -> usize {
-        o200k_base_singleton().lock().encode_ordinary(text).len()
+        o200k_base_singleton().encode_ordinary(text).len()
     }
 
     /// Cost in USD of carrying `tokens` of fixed context (instructions, tool
